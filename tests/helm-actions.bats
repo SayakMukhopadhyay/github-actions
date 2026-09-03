@@ -93,6 +93,9 @@ run_promotion() {
 @test "chart-update-deploy commits only wrapper metadata and selected archives" {
 	make_gitops_fixture
 	run_promotion 0.2.0
+	if [[ "$status" -ne 0 ]]; then
+		printf '%s\n' "$output"
+	fi
 	[ "$status" -eq 0 ]
 	mapfile -t changed < <(git -C "$repository" diff-tree --no-commit-id --name-only -r HEAD | sort)
 	[ "${#changed[@]}" -eq 4 ]
@@ -133,6 +136,7 @@ run_promotion() {
 
 	run_promotion 0.2.0
 	[ "$status" -ne 0 ]
+	[[ "$output" == *"[rejected]"* || "$output" == *"fetch first"* ]]
 	[ "$(git --git-dir="$bare" rev-parse refs/heads/main)" = "$remote_head" ]
 }
 

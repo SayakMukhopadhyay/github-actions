@@ -67,8 +67,11 @@ for path in "${changed_paths[@]}"; do
 done
 
 for path in "${changed_paths[@]}"; do
-	git -C "$checkout" add -u -- "$path"
-	[[ ! -e "$checkout/$path" ]] || git -C "$checkout" add -- "$path"
+	if [[ -e "$checkout/$path" ]]; then
+		git -C "$checkout" add -- "$path"
+	else
+		git -C "$checkout" add -u -- "$path"
+	fi
 done
 
 message="feat: update umbrella chart for $chart_name in $environment environment for chart version $target_version"
