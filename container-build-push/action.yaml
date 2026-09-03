@@ -72,8 +72,7 @@ runs:
       with:
         context: ${{ inputs.working-directory }}
         build-contexts: ${{ inputs.build-contexts }}
-        secrets: |
-          auth-token=${{ inputs.auth-token }}
+        secrets: ${{ inputs.auth-token != '' && format('auth-token={0}', inputs.auth-token) || '' }}
         pull: true
         push: ${{ inputs.push }}
         tags: ${{ steps.prepare.outputs.image-reference }}
