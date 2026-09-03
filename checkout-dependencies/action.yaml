@@ -1,0 +1,27 @@
+name: Checkout Dependencies
+description: Checkout a Go project and download its module dependencies
+inputs:
+  working-directory:
+    description: Go module directory relative to the checkout
+    required: false
+    default: .
+  go-version:
+    description: Go version to configure
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Set up Go
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: ~${{ inputs.go-version }}
+        cache: true
+        cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+    - name: Download Go dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: go mod download

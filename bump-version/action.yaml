@@ -1,0 +1,44 @@
+name: Bump Version
+description: Bump selected project version metadata, commit it, and push it
+inputs:
+  token:
+    description: Token with contents write permission for the application repository
+    required: true
+  increment:
+    description: patch, minor, or major
+    required: true
+    default: patch
+  working-directory:
+    description: Working directory of the project
+    required: false
+    default: .
+  helm:
+    description: Whether to bump Helm chart metadata
+    required: false
+    default: 'false'
+  go:
+    description: Whether the application is a Go project
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Checkout current branch
+      # actions/checkout v7.0.1. Credentials are required by this action's immediate push.
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # zizmor: ignore[artipacked] intentional
+      with:
+        ref: ${{ github.ref_name }}
+        fetch-depth: 0
+        fetch-tags: false
+        persist-credentials: true
+        token: ${{ inputs.token }}
+    - name: Bump, commit, and push versions
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_INCREMENT: ${{ inputs.increment }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_HELM: ${{ inputs.helm }}
+        INPUT_GO: ${{ inputs.go }}
+        TARGET_REF: ${{ github.ref_name }}
+      run: 'bash "$ACTION_PATH/bump-version.sh"'

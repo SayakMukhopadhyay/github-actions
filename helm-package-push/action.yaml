@@ -1,0 +1,77 @@
+name: Helm Package Push
+description: Package a Helm chart and optionally push it to a caller-selected OCI registry
+inputs:
+  development:
+    description: Whether to create a development chart version
+    required: false
+    default: 'false'
+  username:
+    description: Registry username
+    required: false
+    default: ''
+  password:
+    description: Registry password or token
+    required: false
+    default: ''
+  push:
+    description: Push the chart to the OCI registry
+    required: false
+    default: 'true'
+  app-version:
+    description: Optional application version override passed to helm package
+    required: false
+    default: ''
+  working-directory:
+    description: Working directory of the project
+    required: false
+    default: .
+  registry:
+    description: OCI registry host
+    required: false
+    default: ghcr.io
+  repository:
+    description: OCI repository below the registry; defaults to github.repository_owner/charts
+    required: false
+    default: ''
+outputs:
+  chart-name:
+    description: Name of the packaged chart
+    value: ${{ steps.package.outputs.chart-name }}
+  chart-version:
+    description: Version of the packaged chart
+    value: ${{ steps.package.outputs.chart-version }}
+runs:
+  using: composite
+  steps:
+    - name: Checkout source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Set up Helm
+      uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      with:
+        version: v4.2.4
+    - name: Log in to OCI registry
+      if: inputs.push == 'true'
+      shell: bash
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        USERNAME: ${{ inputs.username }}
+        PASSWORD: ${{ inputs.password }}
+      run: 'printf "%s" "$PASSWORD" | helm registry login "$REGISTRY" --username "$USERNAME" --password-stdin'
+    - id: package
+      name: Build, package, and optionally push chart
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_DEVELOPMENT: ${{ inputs.development }}
+        INPUT_PUSH: ${{ inputs.push }}
+        INPUT_APP_VERSION: ${{ inputs.app-version }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_REGISTRY: ${{ inputs.registry }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        REGISTRY_USERNAME: ${{ inputs.username }}
+        REGISTRY_PASSWORD: ${{ inputs.password }}
+        COMMIT_SHA: ${{ github.sha }}
+        REPOSITORY_OWNER: ${{ github.repository_owner }}
+      run: 'bash "$ACTION_PATH/helm-package-push.sh"'

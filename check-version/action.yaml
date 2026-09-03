@@ -1,0 +1,21 @@
+name: Check Version
+description: Check whether a project's version strings are consistent
+inputs:
+  working-directory:
+    description: Working directory of the project
+    required: false
+    default: .
+  helm:
+    description: Whether the project uses Helm
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Check version consistency
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_HELM: ${{ inputs.helm }}
+      run: 'bash "$ACTION_PATH/check-version.sh"'

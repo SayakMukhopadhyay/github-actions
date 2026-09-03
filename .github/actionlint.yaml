@@ -1,0 +1,6 @@
+paths:
+  .github/workflows/ci.yaml:
+    ignore:
+      # GitHub.com's $/ self-repository syntax postdates actionlint v1.7.12.
+      # Remove this exception once the pinned actionlint release supports it.
+      - 'specifying action "\$/[^\"]+" in invalid format because ref is missing'

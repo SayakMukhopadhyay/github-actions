@@ -1,0 +1,82 @@
+name: Chart Update Deploy
+description: Update a Helm dependency in a caller-selected GitOps repository
+inputs:
+  token:
+    description: Token with contents write permission for the target repository
+    required: true
+  environment:
+    description: Name of the environment being deployed
+    required: true
+  chart-name:
+    description: Name of the chart being deployed
+    required: true
+  chart-version:
+    description: Version of the chart dependency to deploy
+    required: true
+  dependency:
+    description: Name of the dependency to update
+    required: true
+  username:
+    description: Optional OCI registry username
+    required: false
+    default: ''
+  password:
+    description: Optional OCI registry password or token
+    required: false
+    default: ''
+  target-repository:
+    description: GitHub owner/repository containing the wrapper chart
+    required: true
+  target-ref:
+    description: Branch to update in the target repository
+    required: false
+    default: main
+  wrapper-chart-path:
+    description: Wrapper chart path; defaults to chart-name/envs/env
+    required: false
+    default: ''
+  registry:
+    description: Optional OCI registry host to authenticate to before dependency update
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Checkout target charts repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ inputs.target-repository }}
+        ref: ${{ inputs.target-ref }}
+        path: .gitops-charts
+        fetch-depth: 0
+        fetch-tags: false
+        # Credentials are required by this action's immediate focused push.
+        persist-credentials: true # zizmor: ignore[artipacked] intentional
+        token: ${{ inputs.token }}
+    - name: Set up Helm
+      uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      with:
+        version: v4.2.4
+    - name: Log in to OCI registry
+      if: inputs.registry != ''
+      shell: bash
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        USERNAME: ${{ inputs.username }}
+        PASSWORD: ${{ inputs.password }}
+      run: 'printf "%s" "$PASSWORD" | helm registry login "$REGISTRY" --username "$USERNAME" --password-stdin'
+    - name: Update and push wrapper dependency
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_CHECKOUT_PATH: .gitops-charts
+        INPUT_ENVIRONMENT: ${{ inputs.environment }}
+        INPUT_CHART_NAME: ${{ inputs.chart-name }}
+        INPUT_CHART_VERSION: ${{ inputs.chart-version }}
+        INPUT_DEPENDENCY: ${{ inputs.dependency }}
+        INPUT_TARGET_REF: ${{ inputs.target-ref }}
+        INPUT_WRAPPER_CHART_PATH: ${{ inputs.wrapper-chart-path }}
+        INPUT_REGISTRY: ${{ inputs.registry }}
+        REGISTRY_USERNAME: ${{ inputs.username }}
+        REGISTRY_PASSWORD: ${{ inputs.password }}
+      run: 'bash "$ACTION_PATH/chart-update-deploy.sh"'

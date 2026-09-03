@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static-analysis:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.27.0
+          cache: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+          cache: pip
+      - name: Install metadata validator dependency
+        run: python -m pip install --requirement requirements-dev.txt
+      - name: Install ShellCheck
+        env:
+          SHELLCHECK_VERSION: 0.11.0
+          SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+        run: bash scripts/install-shellcheck.sh
+      - name: Validate action metadata contracts
+        run: python tests/validate_metadata.py
+      - name: Lint shell scripts
+        run: find . -type f -name '*.sh' -print0 | xargs -0 shellcheck --external-sources --source-path=SCRIPTDIR
+      - name: Check shell formatting
+        run: go run mvdan.cc/sh/v3/cmd/shfmt@v3.14.0 -d .
+      - name: Lint workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - name: Audit workflow security
+        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          version: 1.30.0
+          online-audits: false
+          advanced-security: false
+          annotations: true
+
+  tests:
+    name: Unit and mutation tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Checkout Bats
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: bats-core/bats-core
+          ref: eb7f42f8d608ac693d7a4b67474f6714ea68cfc5 # v1.14.0
+          path: .tools/bats
+          persist-credentials: false
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.2.4
+      - name: Run unit and mutation fixtures
+        run: .tools/bats/bin/bats tests
+
+  action-level:
+    name: Action-level fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Checkout fixture Go dependencies
+        uses: $/checkout-dependencies
+        with:
+          working-directory: tests/fixtures/go-chart
+          go-version: '1.27'
+      - name: Validate fixture versions
+        uses: $/check-version
+        with:
+          working-directory: tests/fixtures/go-chart
+          helm: 'true'
+      - name: Build fixture container
+        uses: $/container-build-push
+        with:
+          version: ci
+          working-directory: tests/fixtures/go-chart
+          push: 'false'
+      - name: Package fixture chart
+        uses: $/helm-package-push
+        with:
+          working-directory: tests/fixtures/go-chart
+          development: 'false'
+          push: 'false'
