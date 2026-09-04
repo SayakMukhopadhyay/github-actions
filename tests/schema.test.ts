@@ -29,7 +29,7 @@ void before(async () => {
   await generateActionSchema(root);
 });
 
-void test('accepts valid inputs for every public action', async () => {
+void test('accepts valid inputs for each documented consumer action', async () => {
   const validActions: [string, Record<string, string>][] = [
     ['check-version', {}],
     ['is-file-changed', { pattern: '^charts/' }],

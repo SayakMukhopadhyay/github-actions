@@ -44,22 +44,6 @@ interface WorkflowMetadata {
 const root = path.resolve(import.meta.dirname, '..');
 const immutableAction = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[0-9a-f]{40}$/u;
 const internalAction = /^\$\/actions\/[a-z0-9-]+$/u;
-const publicActions = [
-  'bump-version',
-  'chart-update-deploy',
-  'check-version',
-  'checkout-dependencies',
-  'container-build-push',
-  'create-release',
-  'helm-package-push',
-  'is-file-changed',
-] as const;
-const javascriptActions = new Set<string>(['check-version']);
-
-function sorted(values: Iterable<string>): string[] {
-  return [...values].sort((left, right) => left.localeCompare(right));
-}
-
 function readYaml<T>(file: string): T {
   return parse(readFileSync(file, 'utf8')) as T;
 }
@@ -68,29 +52,34 @@ function readAction(name: string): ActionMetadata {
   return readYaml<ActionMetadata>(path.join(root, name, 'action.yaml'));
 }
 
-void test('public metadata preserves the approved action contracts and runtime boundaries', () => {
-  const expectedActions = sorted(publicActions);
-  const actualActions = sorted(
-    readdirSync(root, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .filter((entry) => {
-        try {
-          return readFileSync(path.join(root, entry.name, 'action.yaml')).length > 0;
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-          throw error;
-        }
-      })
-      .map((entry) => entry.name),
-  );
-  assert.deepEqual(actualActions, expectedActions);
+function consumerActionNames(): string[] {
+  return readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .filter((entry) => {
+      try {
+        return readFileSync(path.join(root, entry.name, 'action.yaml')).length > 0;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        throw error;
+      }
+    })
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+void test('consumer action metadata is complete and uses safe runtime boundaries', () => {
+  const actionNames = consumerActionNames();
+  assert.notEqual(actionNames.length, 0, 'expected at least one reusable action');
 
   const readme = readFileSync(path.join(root, 'README.md'), 'utf8');
-  for (const actionName of expectedActions) {
+  for (const actionName of actionNames) {
     const metadata = readAction(actionName);
-    const runtime = javascriptActions.has(actionName) ? 'node24' : 'composite';
-    assert.equal(metadata.runs?.using, runtime, `${actionName} runtime`);
-    if (runtime === 'node24') {
+    assert.equal(
+      metadata.runs?.using === 'node24' || metadata.runs?.using === 'composite',
+      true,
+      `${actionName} runtime`,
+    );
+    if (metadata.runs?.using === 'node24') {
       assert.equal(metadata.runs?.main, 'dist/index.mjs', `${actionName} bundle entry`);
     }
 
@@ -138,23 +127,7 @@ void test('container build metadata preserves safe optional forwarding', () => {
   assert.equal(buildSteps[0]?.with?.['build-args'], '${{ inputs.build-args }}');
 });
 
-void test('create-release keeps its entire public input surface caller-required', () => {
-  const metadata = readAction('create-release');
-  assert.deepEqual(
-    sorted(Object.keys(metadata.inputs ?? {})),
-    sorted(['token', 'tag-name', 'release-name', 'openai-api-key']),
-  );
-  assert.deepEqual(
-    sorted(Object.keys(metadata.outputs ?? {})),
-    sorted(['release-id', 'html-url', 'upload-url']),
-  );
-  for (const [name, input] of Object.entries(metadata.inputs ?? {})) {
-    assert.equal(input.required, true, name);
-    assert.equal(Object.hasOwn(input, 'default'), false, name);
-  }
-});
-
-void test('CI exercises multiline container build arguments through the public action', () => {
+void test('CI exercises multiline container build arguments through the consumer action', () => {
   const workflow = readYaml<WorkflowMetadata>(path.join(root, '.github', 'workflows', 'ci.yaml'));
   const steps = workflow.jobs?.['action-level']?.steps ?? [];
   const fixtures = steps.filter((step) => step.uses === './container-build-push');

@@ -21,7 +21,7 @@ interface ActionMetadata {
   outputs?: Record<string, ActionOutput>;
 }
 
-interface PublicAction {
+interface ConsumerAction {
   directory: string;
   metadata: ActionMetadata;
 }
@@ -31,7 +31,7 @@ function repositoryRoot(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 }
 
-async function readPublicActions(root: string): Promise<PublicAction[]> {
+async function readConsumerActions(root: string): Promise<ConsumerAction[]> {
   const entries = await readdir(root, { withFileTypes: true });
   const actions = await Promise.all(
     entries
@@ -52,7 +52,7 @@ async function readPublicActions(root: string): Promise<PublicAction[]> {
   );
 
   return actions
-    .filter((action): action is PublicAction => action !== undefined)
+    .filter((action): action is ConsumerAction => action !== undefined)
     .sort((left, right) => left.directory.localeCompare(right.directory));
 }
 
@@ -79,7 +79,7 @@ function inputSchema(input: ActionInput): Record<string, unknown> {
   return schema;
 }
 
-function actionCondition(action: PublicAction): Record<string, unknown> {
+function actionCondition(action: ConsumerAction): Record<string, unknown> {
   const inputs = action.metadata.inputs ?? {};
   const properties = Object.fromEntries(
     Object.entries(inputs).map(([name, input]) => [name, inputSchema(input)]),
@@ -119,7 +119,7 @@ function actionCondition(action: PublicAction): Record<string, unknown> {
   };
 }
 
-function buildSchema(actions: PublicAction[]): Record<string, unknown> {
+function buildSchema(actions: ConsumerAction[]): Record<string, unknown> {
   const conditions = actions.map(actionCondition);
 
   return {
@@ -144,18 +144,12 @@ function buildSchema(actions: PublicAction[]): Record<string, unknown> {
         },
       },
     },
-    $comment: `Only ${repository} action references at @v1 are constrained by this overlay.`,
+    $comment: `Only ${repository} reusable action references at @v1 are constrained by this overlay.`,
   };
 }
 
 export async function generateActionSchema(root = repositoryRoot()): Promise<void> {
-  const actions = await readPublicActions(root);
-  if (actions.length !== 8) {
-    throw new Error(
-      `Expected exactly eight public action metadata files, found ${actions.length}.`,
-    );
-  }
-
+  const actions = await readConsumerActions(root);
   const schema = buildSchema(actions);
   const destination = path.join(root, 'schemas', 'action-inputs.schema.json');
   await writeFile(

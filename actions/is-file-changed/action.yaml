@@ -5,7 +5,7 @@ inputs:
     description: JavaScript regular expression matched against changed repository paths
     required: true
   changed-files:
-    description: NUL-delimited Git name-status file produced by the public composite action
+    description: NUL-delimited Git name-status file produced by the root-level composite action
     required: true
 outputs:
   changed:

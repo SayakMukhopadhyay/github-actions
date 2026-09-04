@@ -251,7 +251,7 @@ void test('maximum accepted release facts always render within the publisher bod
   assert.ok(Buffer.byteLength(body, 'utf8') <= 120_000);
 });
 
-void test('public composite scopes GitHub and OpenAI credentials to different processes', async () => {
+void test('consumer composite scopes GitHub and OpenAI credentials to different processes', async () => {
   const metadata = await readFile(
     new URL('../create-release/action.yaml', import.meta.url),
     'utf8',

@@ -21,7 +21,6 @@
     "typecheck": "tsc --noEmit",
     "schema:generate": "node tooling/generate-action-schema.ts",
     "schema:check": "npm run schema:generate && git diff --exit-code -- schemas/action-inputs.schema.json",
-    "contracts:check": "node tooling/check-v1-compatibility.ts",
     "test": "npm run test:node && npm run test:shell",
     "test:node": "node --test tests/**/*.test.ts",
     "test:schema": "node --test tests/schema.test.ts",

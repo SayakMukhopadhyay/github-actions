@@ -2,7 +2,7 @@
 
 Eight GitHub Actions for Go applications, container images, Helm charts, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, and file mutation that benefits from structured code is authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
 
-The existing `@v1` release contains the original seven actions. The new `create-release` action is available from the repository only after a separately authorized release updates the public version reference.
+The existing `@v1` release contains the original seven actions. The new `create-release` action is available from the repository after `v1` is promoted to a commit that contains it.
 
 ## Input conventions
 
@@ -172,15 +172,15 @@ Editors can combine SchemaStore's GitHub workflow completion with this repositor
 # $schema: https://raw.githubusercontent.com/SayakMukhopadhyay/github-actions/v1/schemas/github-workflow.schema.json
 ```
 
-The public wrapper references SchemaStore's live workflow schema and the committed `schemas/action-inputs.schema.json` overlay. The overlay is generated from the eight public `action.yaml` files, which remain the sole contract authority. It validates inputs for this repository's `@v1` action paths; it does not attempt to interpret output names embedded in GitHub expressions.
+The wrapper references SchemaStore's live workflow schema and the committed `schemas/action-inputs.schema.json` overlay. The overlay is generated from every root-level reusable `action.yaml` file, which remains the sole input authority. It validates inputs for this repository's `@v1` action paths; it does not attempt to interpret output names embedded in GitHub expressions.
 
 ## Development
 
 The repository is one npm package and does not use workspaces. Each executable action keeps its TypeScript entry point, `action.yaml`, and generated `dist/index.mjs` together:
 
 - `check-version/` is directly callable as a JavaScript action.
-- `actions/is-file-changed/`, `actions/bump-version/`, `actions/helm-package-push/`, and `actions/create-release/` are implementation actions invoked by their public composite wrappers.
-- `tooling/` contains only repository-maintenance programs such as schema generation and file-only contract comparison.
+- `actions/is-file-changed/`, `actions/bump-version/`, `actions/helm-package-push/`, and `actions/create-release/` are implementation actions invoked by their root-level composite wrappers.
+- `tooling/` contains repository-maintenance programs such as schema generation.
 
 There is no general shared-code directory. Common modules should be extracted only after two implemented actions demonstrate identical behavior.
 
@@ -220,15 +220,13 @@ git diff --check
 
 CI repeats both generators and rejects any byte-level drift. Fixed output names and LF normalization keep the committed artifacts reproducible across Windows development and Ubuntu CI. Do not submit source-only changes expecting a later release build to update `dist`.
 
-The released `v1` metadata is extracted by `tooling/extract-v1-contracts.sh`; the TypeScript compatibility checker reads only those extracted files and never invokes Git or another command. Removed or renamed inputs/outputs, newly caller-required inputs, and changed existing defaults fail CI. Additive optional inputs and outputs remain compatible.
-
 Licensed dependency metadata lives under `.licenses/npm` and is governed by `.licensed.yml`. When npm dependencies change, run `licensed cache` with Licensed `5.1.0`, review the generated records, and commit them with the lockfile. CI runs `licensed status`; it never updates or commits the cache.
 
 ## CI and v1 promotion
 
-Ubuntu CI runs TypeScript, ESLint, Prettier, pure Node tests, shell integration tests, Ajv schema fixtures, released-contract compatibility, deterministic bundle/schema drift checks, bundle syntax smoke checks, ShellCheck, checksum-and-attestation-verified actionlint, offline Zizmor, Licensed, and credential-free container/Helm action fixtures. External actions use reviewed full commit SHAs. Dependabot opens weekly npm and GitHub Actions pull requests; updates are never automerged.
+Ubuntu CI runs TypeScript, ESLint, Prettier, pure Node tests, shell integration tests, Ajv schema fixtures, deterministic bundle/schema drift checks, bundle syntax smoke checks, ShellCheck, attestation-verified actionlint, offline Zizmor, Licensed, and credential-free container/Helm action fixtures. External actions use reviewed full commit SHAs. Dependabot opens weekly npm and GitHub Actions pull requests; updates are never automerged.
 
-Source changes do not move `v1`. To promote or intentionally roll back, manually run the **Promote v1** workflow with a full 40-character commit SHA from `main`. The workflow verifies reachability, checks through GitHub's read-only Checks API that the exact target already passed the required main CI action-level fixtures, checks out that exact tree, reruns its source, type, lint, test, schema, contract, bundle, security, and license checks, requires the tree to remain clean, and then moves only the lightweight `v1` tag with force-with-lease protection. The composite fixtures are not repeated during promotion because their nested checkout steps resolve the workflow-dispatch event SHA rather than a dynamically selected rollback SHA. Only the final tag-push job receives `contents: write`; no semver tag or GitHub Release is created for this action repository.
+Source changes do not move `v1`. To promote or intentionally roll back, manually run the **Promote v1** workflow with a full 40-character commit SHA from `main`. It verifies that exact commit is reachable from `main`, then moves the lightweight `v1` tag with force-with-lease protection. The promotion job alone receives `contents: write`; no semver tag or GitHub Release is created for this action repository.
 
 Local development and ordinary CI perform no remote publication, create no live GitHub Release, and never move the `v1` tag.
 

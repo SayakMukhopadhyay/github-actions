@@ -399,5 +399,5 @@
       }
     }
   },
-  "$comment": "Only SayakMukhopadhyay/github-actions action references at @v1 are constrained by this overlay."
+  "$comment": "Only SayakMukhopadhyay/github-actions reusable action references at @v1 are constrained by this overlay."
 }

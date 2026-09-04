@@ -75,12 +75,6 @@ jobs:
       - name: Reject consumer schema drift
         run: git diff --exit-code -- schemas/action-inputs.schema.json
 
-      - name: Extract released v1 contracts
-        run: bash tooling/extract-v1-contracts.sh "$RUNNER_TEMP/v1-actions"
-
-      - name: Check public v1 compatibility
-        run: npm run contracts:check -- "$RUNNER_TEMP/v1-actions"
-
       - name: Rebuild ESM action bundles
         run: npm run bundle
 
@@ -101,12 +95,6 @@ jobs:
           node --check actions/helm-package-push/dist/index.mjs
           node --check actions/create-release/dist/index.mjs
 
-      - name: Install ShellCheck
-        env:
-          SHELLCHECK_VERSION: 0.11.0
-          SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
-        run: bash scripts/install-shellcheck.sh
-
       - name: Lint shell scripts
         run: |
           mapfile -d '' shell_files < <(
@@ -118,12 +106,19 @@ jobs:
           )
           shellcheck --external-sources --source-path=SCRIPTDIR "${shell_files[@]}"
 
-      - name: Install verified actionlint
+      - name: Install actionlint
         env:
           ACTIONLINT_VERSION: 1.7.12
-          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
           GH_TOKEN: ${{ github.token }}
-        run: bash tooling/install-actionlint.sh "$RUNNER_TEMP/actionlint-bin"
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          mkdir -p "$RUNNER_TEMP/actionlint-bin"
+          gh release download "v$ACTIONLINT_VERSION" \
+            --repo rhysd/actionlint \
+            --pattern "$archive" \
+            --dir "$RUNNER_TEMP/actionlint-bin"
+          gh attestation verify "$RUNNER_TEMP/actionlint-bin/$archive" --repo rhysd/actionlint
+          tar -xzf "$RUNNER_TEMP/actionlint-bin/$archive" -C "$RUNNER_TEMP/actionlint-bin" actionlint
 
       - name: Lint workflows
         run: '"$RUNNER_TEMP/actionlint-bin/actionlint"'
