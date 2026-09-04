@@ -130,7 +130,7 @@ void test('container build metadata preserves safe optional forwarding', () => {
 void test('CI exercises multiline container build arguments through the consumer action', () => {
   const workflow = readYaml<WorkflowMetadata>(path.join(root, '.github', 'workflows', 'ci.yaml'));
   const steps = workflow.jobs?.['action-level']?.steps ?? [];
-  const fixtures = steps.filter((step) => step.uses === './container-build-push');
+  const fixtures = steps.filter((step) => step.uses === '$/container-build-push');
   assert.equal(fixtures.length, 1);
   assert.equal(fixtures[0]?.with?.['build-args'], 'VERSION=fixture-version\nCOMMIT=fixture-commit\n');
 });

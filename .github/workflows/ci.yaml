@@ -192,19 +192,19 @@ jobs:
           persist-credentials: false
 
       - name: Checkout fixture Go dependencies
-        uses: ./checkout-dependencies
+        uses: $/checkout-dependencies
         with:
           working-directory: tests/fixtures/go-chart
           go-version: '1.27'
 
       - name: Validate fixture versions
-        uses: ./check-version
+        uses: $/check-version
         with:
           working-directory: tests/fixtures/go-chart
           helm: 'true'
 
       - name: Build fixture container
-        uses: ./container-build-push
+        uses: $/container-build-push
         with:
           version: ci
           working-directory: tests/fixtures/go-chart
@@ -214,7 +214,7 @@ jobs:
           push: 'false'
 
       - name: Package fixture chart
-        uses: ./helm-package-push
+        uses: $/helm-package-push
         with:
           working-directory: tests/fixtures/go-chart
           development: 'false'
