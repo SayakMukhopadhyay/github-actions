@@ -1,6 +1,6 @@
 export default {
   plugins: ['prettier-plugin-sh'],
-  printWidth: 100,
+  printWidth: 120,
   singleQuote: true,
   trailingComma: 'all',
 };
