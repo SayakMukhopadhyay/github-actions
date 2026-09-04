@@ -151,7 +151,11 @@ fi
 git log --no-walk=unsorted -z --format='%H%x00%s' --stdin \
   < "$rendered_commits_file" > "$commit_records_raw"
 jq -Rs '
-	split("\u0000") as $fields |
+	split("\u0000")
+	| if .[-1] == "" then .[0:-1] else . end
+	| if (length % 2) != 0 then error("Git returned a truncated commit record") else . end
+	| . as $fields
+	|
 	[range(0; ($fields | length); 2) |
 		{sha: $fields[.], subject: $fields[. + 1][0:240]}]
 ' "$commit_records_raw" > "$facts_file.commits"
