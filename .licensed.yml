@@ -1,0 +1,20 @@
+# See https://github.com/licensee/licensed/blob/main/docs/configuration.md.
+sources:
+  npm: true
+
+allowed:
+  - apache-2.0
+  - blueoak-1.0.0
+  - bsd-2-clause
+  - bsd-3-clause
+  - cc0-1.0
+  - isc
+  - mit
+  - unlicense
+
+# Licensee cannot classify this package's otherwise standard MIT text because it
+# begins with a package-specific notice. Keep the exception version-bound; the
+# cached record still contains, and Licensed still requires, the license text.
+reviewed:
+  npm:
+    - '@actions/http-client@4.0.1'

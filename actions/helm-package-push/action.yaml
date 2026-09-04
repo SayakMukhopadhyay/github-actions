@@ -1,0 +1,24 @@
+name: Prepare Helm Package
+description: Internal metadata preparation for the public helm-package-push composite action
+inputs:
+  development:
+    description: Whether to create a development chart version
+    required: true
+  working-directory:
+    description: Working directory of the project
+    required: true
+  commit-sha:
+    description: Commit SHA used for development chart versions
+    required: true
+outputs:
+  chart-directory:
+    description: Canonical path to the chart directory
+  chart-name:
+    description: Name declared by Chart.yaml
+  chart-version:
+    description: Package version derived from charts/VERSION
+  repositories-file:
+    description: NUL-delimited HTTP dependency repository records for the Helm transaction
+runs:
+  using: node24
+  main: dist/index.mjs

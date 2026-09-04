@@ -55,13 +55,44 @@ runs:
       name: Prepare image build
       shell: bash
       env:
-        ACTION_PATH: ${{ github.action_path }}
         INPUT_VERSION: ${{ inputs.version }}
         INPUT_COMPONENT: ${{ inputs.component }}
         INPUT_REGISTRY: ${{ inputs.registry }}
         INPUT_IMAGE_REPOSITORY: ${{ inputs.image-repository }}
         SOURCE_REPOSITORY: ${{ github.repository }}
-      run: 'bash "$ACTION_PATH/prepare.sh"'
+      run: |
+        set -euo pipefail
+
+        version=${INPUT_VERSION:?version is required}
+        component=${INPUT_COMPONENT:-}
+        registry=${INPUT_REGISTRY:-ghcr.io}
+        repository=${INPUT_IMAGE_REPOSITORY:-}
+        [[ -n "$repository" ]] || repository=${SOURCE_REPOSITORY:?github.repository is required}
+
+        for value in "$version" "$component" "$registry" "$repository"; do
+          if [[ $value =~ [[:cntrl:]] ]]; then
+            echo 'Container image inputs must not contain control characters' >&2
+            exit 1
+          fi
+        done
+
+        registry=${registry,,}
+        repository=${repository,,}
+        component=${component,,}
+        # Environment variables cannot represent NUL. Reject every other control byte before
+        # emitting the line-oriented GitHub output protocol.
+        registry_pattern='^([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9])(\.([a-z0-9]|[a-z0-9][a-z0-9-]*[a-z0-9]))*(:[0-9]+)?$'
+        path_pattern='^[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*(/[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*)*$'
+        tag_pattern='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'
+        [[ $registry =~ $registry_pattern ]] || { echo 'Invalid container registry' >&2; exit 1; }
+        [[ $repository =~ $path_pattern ]] || { echo 'Invalid image repository' >&2; exit 1; }
+        [[ -z $component || $component =~ $path_pattern ]] || { echo 'Invalid image component' >&2; exit 1; }
+        [[ $version =~ $tag_pattern ]] || { echo 'Invalid container version tag' >&2; exit 1; }
+
+        image_name="${registry,,}/${repository,,}"
+        [[ -z "$component" ]] || image_name="$image_name/${component,,}"
+        printf 'image-reference=%s:%s\n' "$image_name" "$version" >>"$GITHUB_OUTPUT"
+        printf 'created=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >>"$GITHUB_OUTPUT"
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
     - name: Log in to container registry

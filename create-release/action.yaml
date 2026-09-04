@@ -1,0 +1,87 @@
+name: Create Release
+description: Create an idempotent GitHub Release with AI-assisted descriptive notes
+inputs:
+  token:
+    description: GitHub token for the current repository
+    required: true
+  tag-name:
+    description: Already-created and already-pushed immutable tag
+    required: true
+  release-name:
+    description: Displayed GitHub Release name
+    required: true
+  openai-api-key:
+    description: OpenAI API key used only to generate the release description
+    required: true
+outputs:
+  release-id:
+    description: Numeric identifier of the GitHub Release
+    value: ${{ steps.preflight.outputs.release-id || steps.publish.outputs.release-id }}
+  html-url:
+    description: Browser URL of the GitHub Release
+    value: ${{ steps.preflight.outputs.html-url || steps.publish.outputs.html-url }}
+  upload-url:
+    description: Asset upload URL of the GitHub Release
+    value: ${{ steps.preflight.outputs.upload-url || steps.publish.outputs.upload-url }}
+runs:
+  using: composite
+  steps:
+    - name: Check out the immutable release tag
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        fetch-tags: true
+        persist-credentials: false
+        ref: ${{ inputs.tag-name }}
+        token: ${{ inputs.token }}
+
+    - id: context
+      name: Collect release context
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_TAG_NAME: ${{ inputs.tag-name }}
+        TARGET_REPOSITORY: ${{ github.repository }}
+        TARGET_SERVER_URL: ${{ github.server_url }}
+      run: 'bash "$ACTION_PATH/collect-git-context.sh"'
+
+    - id: preflight
+      name: Return an existing GitHub Release
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_TOKEN: ${{ inputs.token }}
+        FACTS_FILE: ${{ steps.context.outputs.facts-file }}
+        PUBLISH_MODE: check
+      run: 'bash "$ACTION_PATH/publish-release.sh"'
+
+    - name: Generate and render release notes
+      if: steps.preflight.outputs.release-exists != 'true'
+      uses: $/actions/create-release
+      with:
+        openai-api-key: ${{ inputs.openai-api-key }}
+        context-file: ${{ steps.context.outputs.context-file }}
+        facts-file: ${{ steps.context.outputs.facts-file }}
+        body-file: ${{ steps.context.outputs.body-file }}
+
+    - id: publish
+      name: Publish or find the GitHub Release
+      if: steps.preflight.outputs.release-exists != 'true'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_TOKEN: ${{ inputs.token }}
+        INPUT_RELEASE_NAME: ${{ inputs.release-name }}
+        FACTS_FILE: ${{ steps.context.outputs.facts-file }}
+        BODY_FILE: ${{ steps.context.outputs.body-file }}
+        PUBLISH_MODE: publish
+      run: 'bash "$ACTION_PATH/publish-release.sh"'
+
+    - name: Clean up release session
+      if: always()
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        RUNNER_TEMP: ${{ runner.temp }}
+        SESSION_DIRECTORY: ${{ steps.context.outputs.session-directory }}
+      run: 'bash "$ACTION_PATH/cleanup-release-session.sh"'

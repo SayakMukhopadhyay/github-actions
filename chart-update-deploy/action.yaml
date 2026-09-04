@@ -76,7 +76,4 @@ runs:
         INPUT_DEPENDENCY: ${{ inputs.dependency }}
         INPUT_TARGET_REF: ${{ inputs.target-ref }}
         INPUT_WRAPPER_CHART_PATH: ${{ inputs.wrapper-chart-path }}
-        INPUT_REGISTRY: ${{ inputs.registry }}
-        REGISTRY_USERNAME: ${{ inputs.username }}
-        REGISTRY_PASSWORD: ${{ inputs.password }}
       run: 'bash "$ACTION_PATH/chart-update-deploy.sh"'

@@ -32,13 +32,27 @@ runs:
         fetch-tags: false
         persist-credentials: true
         token: ${{ inputs.token }}
-    - name: Bump, commit, and push versions
+    - name: Verify clean checkout
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        INPUT_INCREMENT: ${{ inputs.increment }}
+      run: 'bash "$ACTION_PATH/git-transaction.sh" check-clean'
+    - id: mutate
+      name: Mutate selected versions
+      uses: $/actions/bump-version
+      with:
+        increment: ${{ inputs.increment }}
+        working-directory: ${{ inputs.working-directory }}
+        helm: ${{ inputs.helm }}
+        go: ${{ inputs.go }}
+    - name: Commit and push versions
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
         INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         INPUT_HELM: ${{ inputs.helm }}
         INPUT_GO: ${{ inputs.go }}
+        NEW_APPLICATION_VERSION: ${{ steps.mutate.outputs.application-version }}
+        NEW_CHART_VERSION: ${{ steps.mutate.outputs.chart-version }}
         TARGET_REF: ${{ github.ref_name }}
-      run: 'bash "$ACTION_PATH/bump-version.sh"'
+      run: 'bash "$ACTION_PATH/git-transaction.sh" commit'

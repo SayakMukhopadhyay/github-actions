@@ -1,0 +1,403 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/SayakMukhopadhyay/github-actions/v1/schemas/action-inputs.schema.json",
+  "title": "SayakMukhopadhyay/github-actions v1 workflow inputs",
+  "type": "object",
+  "properties": {
+    "jobs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "uses": { "const": "SayakMukhopadhyay/github-actions/bump-version@v1" }
+                    },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Token with contents write permission for the application repository"
+                          },
+                          "increment": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "patch, minor, or major",
+                            "default": "patch"
+                          },
+                          "working-directory": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Working directory of the project",
+                            "default": "."
+                          },
+                          "helm": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Whether to bump Helm chart metadata",
+                            "default": "false"
+                          },
+                          "go": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Whether the application is a Go project",
+                            "default": "false"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["token"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "uses": { "const": "SayakMukhopadhyay/github-actions/chart-update-deploy@v1" }
+                    },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Token with contents write permission for the target repository"
+                          },
+                          "environment": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Name of the environment being deployed"
+                          },
+                          "chart-name": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Name of the chart being deployed"
+                          },
+                          "chart-version": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Version of the chart dependency to deploy"
+                          },
+                          "dependency": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Name of the dependency to update"
+                          },
+                          "username": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional OCI registry username",
+                            "default": ""
+                          },
+                          "password": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional OCI registry password or token",
+                            "default": ""
+                          },
+                          "target-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "GitHub owner/repository containing the wrapper chart"
+                          },
+                          "target-ref": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Branch to update in the target repository",
+                            "default": "main"
+                          },
+                          "wrapper-chart-path": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Wrapper chart path; defaults to chart-name/envs/env",
+                            "default": ""
+                          },
+                          "registry": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional OCI registry host to authenticate to before dependency update",
+                            "default": ""
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "token",
+                          "environment",
+                          "chart-name",
+                          "chart-version",
+                          "dependency",
+                          "target-repository"
+                        ]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "uses": { "const": "SayakMukhopadhyay/github-actions/check-version@v1" }
+                    },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "working-directory": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Working directory of the project",
+                            "default": "."
+                          },
+                          "helm": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Whether the project uses Helm",
+                            "default": "false"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "uses": {
+                        "const": "SayakMukhopadhyay/github-actions/checkout-dependencies@v1"
+                      }
+                    },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "working-directory": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Go module directory relative to the checkout",
+                            "default": "."
+                          },
+                          "go-version": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Go version to configure"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["go-version"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "uses": {
+                        "const": "SayakMukhopadhyay/github-actions/container-build-push@v1"
+                      }
+                    },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "version": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Version of the container"
+                          },
+                          "component": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional component appended to the image repository",
+                            "default": ""
+                          },
+                          "push": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Push the container to the registry",
+                            "default": "true"
+                          },
+                          "username": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Registry username",
+                            "default": ""
+                          },
+                          "password": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Registry password or token",
+                            "default": ""
+                          },
+                          "auth-token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional BuildKit secret named auth-token",
+                            "default": ""
+                          },
+                          "working-directory": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Docker build context relative to the checkout",
+                            "default": "."
+                          },
+                          "build-contexts": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Additional named Docker build contexts",
+                            "default": ""
+                          },
+                          "build-args": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional build arguments forwarded unchanged to Docker Buildx",
+                            "default": ""
+                          },
+                          "registry": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Container registry host",
+                            "default": "ghcr.io"
+                          },
+                          "image-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Image repository below the registry; defaults to github.repository",
+                            "default": ""
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["version"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "uses": { "const": "SayakMukhopadhyay/github-actions/create-release@v1" }
+                    },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "GitHub token for the current repository"
+                          },
+                          "tag-name": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Already-created and already-pushed immutable tag"
+                          },
+                          "release-name": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Displayed GitHub Release name"
+                          },
+                          "openai-api-key": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "OpenAI API key used only to generate the release description"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["token", "tag-name", "release-name", "openai-api-key"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "uses": { "const": "SayakMukhopadhyay/github-actions/helm-package-push@v1" }
+                    },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "development": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Whether to create a development chart version",
+                            "default": "false"
+                          },
+                          "username": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Registry username",
+                            "default": ""
+                          },
+                          "password": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Registry password or token",
+                            "default": ""
+                          },
+                          "push": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Push the chart to the OCI registry",
+                            "default": "true"
+                          },
+                          "app-version": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional application version override passed to helm package",
+                            "default": ""
+                          },
+                          "working-directory": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Working directory of the project",
+                            "default": "."
+                          },
+                          "registry": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "OCI registry host",
+                            "default": "ghcr.io"
+                          },
+                          "repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "OCI repository below the registry; defaults to github.repository_owner/charts",
+                            "default": ""
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "uses": { "const": "SayakMukhopadhyay/github-actions/is-file-changed@v1" }
+                    },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "pattern": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "JavaScript regular expression matched against changed repository paths"
+                          },
+                          "token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Token used to checkout and fetch the repository",
+                            "default": "${{ github.token }}"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["pattern"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "$comment": "Only SayakMukhopadhyay/github-actions action references at @v1 are constrained by this overlay."
+}

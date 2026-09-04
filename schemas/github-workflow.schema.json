@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/SayakMukhopadhyay/github-actions/v1/schemas/github-workflow.schema.json",
+  "allOf": [
+    {
+      "$ref": "https://json.schemastore.org/github-workflow.json"
+    },
+    {
+      "$ref": "./action-inputs.schema.json"
+    }
+  ]
+}

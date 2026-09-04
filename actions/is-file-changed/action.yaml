@@ -1,0 +1,15 @@
+name: Detect Changed Files
+description: Internal implementation for the public is-file-changed composite action
+inputs:
+  pattern:
+    description: JavaScript regular expression matched against changed repository paths
+    required: true
+  changed-files:
+    description: NUL-delimited Git name-status file produced by the public composite action
+    required: true
+outputs:
+  changed:
+    description: Whether any changed path matched the pattern
+runs:
+  using: node24
+  main: dist/index.mjs

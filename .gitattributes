@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.png binary
+*.tgz binary
+**/dist/*.mjs text eol=lf -whitespace linguist-generated=true
+**/dist/*.mjs.map text eol=lf -whitespace linguist-generated=true

@@ -1,0 +1,47 @@
+{
+  "name": "@sayakmukhopadhyay/github-actions",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "npm@11.19.0",
+  "engines": {
+    "node": "24.20.0",
+    "npm": ">=11.0.0"
+  },
+  "scripts": {
+    "bundle:check-version": "rolldown check-version/check-version.ts --file check-version/dist/index.mjs --format esm --platform node --sourcemap --no-codeSplitting",
+    "bundle:is-file-changed": "rolldown actions/is-file-changed/is-file-changed.ts --file actions/is-file-changed/dist/index.mjs --format esm --platform node --sourcemap --no-codeSplitting",
+    "bundle:bump-version": "rolldown actions/bump-version/bump-version.ts --file actions/bump-version/dist/index.mjs --format esm --platform node --sourcemap --no-codeSplitting",
+    "bundle:helm-package-push": "rolldown actions/helm-package-push/helm-package-push.ts --file actions/helm-package-push/dist/index.mjs --format esm --platform node --sourcemap --no-codeSplitting",
+    "bundle:create-release": "rolldown actions/create-release/create-release.ts --file actions/create-release/dist/index.mjs --format esm --platform node --sourcemap --no-codeSplitting",
+    "bundle": "npm run bundle:check-version && npm run bundle:is-file-changed && npm run bundle:bump-version && npm run bundle:helm-package-push && npm run bundle:create-release",
+    "format": "prettier --write \"{check-version,actions,tooling,tests}/**/*.{ts,mts,cts}\" \"{schemas,.github}/**/*.{json,yaml,yml}\" \"**/action.yaml\" \"*.{json,md,mjs,yaml,yml}\" \"**/*.sh\"",
+    "format:check": "prettier --check \"{check-version,actions,tooling,tests}/**/*.{ts,mts,cts}\" \"{schemas,.github}/**/*.{json,yaml,yml}\" \"**/action.yaml\" \"*.{json,md,mjs,yaml,yml}\" \"**/*.sh\"",
+    "lint": "eslint \"{check-version,actions,tooling,tests}/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "schema:generate": "node tooling/generate-action-schema.ts",
+    "schema:check": "npm run schema:generate && git diff --exit-code -- schemas/action-inputs.schema.json",
+    "contracts:check": "node tooling/check-v1-compatibility.ts",
+    "test": "npm run test:node && npm run test:shell",
+    "test:node": "node --test tests/**/*.test.ts",
+    "test:schema": "node --test tests/schema.test.ts",
+    "test:shell": "bats tests"
+  },
+  "dependencies": {
+    "@actions/core": "3.0.1",
+    "openai": "7.10.0",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
+    "ajv": "8.20.0",
+    "eslint": "10.9.1",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.9.6",
+    "prettier-plugin-sh": "0.19.0",
+    "rolldown": "1.2.7",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.69.0"
+  }
+}

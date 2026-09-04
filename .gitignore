@@ -1,2 +1,4 @@
 AgentNotes/
 .tools/
+node_modules/
+.npm-cache/

@@ -1,0 +1,18 @@
+name: Generate Release Notes
+description: Generate and deterministically render validated release notes
+inputs:
+  openai-api-key:
+    description: OpenAI API key used only by this generation process
+    required: true
+  context-file:
+    description: Secret-free bounded repository context file
+    required: true
+  facts-file:
+    description: Secret-free authoritative Git release facts file
+    required: true
+  body-file:
+    description: New file to receive the rendered release body
+    required: true
+runs:
+  using: node24
+  main: dist/index.mjs

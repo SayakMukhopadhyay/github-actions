@@ -3,8 +3,8 @@
 set -euo pipefail
 
 fail() {
-	printf '::error::%s\n' "$*" >&2
-	exit 1
+  printf '::error::%s\n' "$*" >&2
+  exit 1
 }
 
 workspace=$(realpath -e -- "${GITHUB_WORKSPACE:-$PWD}")
@@ -12,7 +12,7 @@ checkout=$(realpath -e -- "$workspace/${INPUT_CHECKOUT_PATH:-.gitops-charts}") |
 [[ "$checkout" == "$workspace/"* ]] || fail "target checkout escapes the workspace"
 [[ -z "$(git -C "$checkout" status --porcelain)" ]] || fail "target repository checkout is not clean"
 
-command -v yq >/dev/null || fail "yq v4 is required"
+command -v yq > /dev/null || fail "yq v4 is required"
 [[ $(yq --version) =~ version[[:space:]]+v?4\. ]] || fail "yq v4 is required"
 
 environment=${INPUT_ENVIRONMENT:?environment is required}
@@ -35,12 +35,12 @@ current_version=$(DEPENDENCY="$dependency" yq -er '.dependencies[] | select(.nam
 target_archive="$wrapper/charts/$dependency-$target_version.tgz"
 
 if [[ "$current_version" == "$target_version" ]]; then
-	[[ -f "$lock_file" ]] || fail "Chart.yaml already requests $target_version, but Chart.lock is missing"
-	locked_version=$(DEPENDENCY="$dependency" yq -er '.dependencies[] | select(.name == strenv(DEPENDENCY)) | .version' "$lock_file") || fail "Chart.lock does not contain dependency '$dependency'"
-	[[ "$locked_version" == "$target_version" ]] || fail "Chart.yaml requests $target_version, but Chart.lock records $locked_version"
-	[[ -f "$target_archive" ]] || fail "Chart.yaml requests $target_version, but vendored archive is missing: $target_archive"
-	printf 'Dependency %s is already consistently pinned to %s\n' "$dependency" "$target_version"
-	exit 0
+  [[ -f "$lock_file" ]] || fail "Chart.yaml already requests $target_version, but Chart.lock is missing"
+  locked_version=$(DEPENDENCY="$dependency" yq -er '.dependencies[] | select(.name == strenv(DEPENDENCY)) | .version' "$lock_file") || fail "Chart.lock does not contain dependency '$dependency'"
+  [[ "$locked_version" == "$target_version" ]] || fail "Chart.yaml requests $target_version, but Chart.lock records $locked_version"
+  [[ -f "$target_archive" ]] || fail "Chart.yaml requests $target_version, but vendored archive is missing: $target_archive"
+  printf 'Dependency %s is already consistently pinned to %s\n' "$dependency" "$target_version"
+  exit 0
 fi
 
 DEPENDENCY="$dependency" TARGET_VERSION="$target_version" yq -i '(.dependencies[] | select(.name == strenv(DEPENDENCY))).version = strenv(TARGET_VERSION)' "$chart_file"
@@ -60,18 +60,18 @@ mapfile -d '' -t changed_paths < <(git -C "$checkout" diff --name-only -z)
 mapfile -d '' -t untracked_paths < <(git -C "$checkout" ls-files --others --exclude-standard -z)
 changed_paths+=("${untracked_paths[@]}")
 for path in "${changed_paths[@]}"; do
-	case "$path" in
-	"$chart_relative" | "$lock_relative" | "$archives_relative/$dependency-"*.tgz) ;;
-	*) fail "helm dependency update changed unexpected path: $path" ;;
-	esac
+  case "$path" in
+    "$chart_relative" | "$lock_relative" | "$archives_relative/$dependency-"*.tgz) ;;
+    *) fail "helm dependency update changed unexpected path: $path" ;;
+  esac
 done
 
 for path in "${changed_paths[@]}"; do
-	if [[ -e "$checkout/$path" ]]; then
-		git -C "$checkout" add -- "$path"
-	else
-		git -C "$checkout" add -u -- "$path"
-	fi
+  if [[ -e "$checkout/$path" ]]; then
+    git -C "$checkout" add -- "$path"
+  else
+    git -C "$checkout" add -u -- "$path"
+  fi
 done
 
 message="feat: update umbrella chart for $chart_name in $environment environment for chart version $target_version"

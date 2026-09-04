@@ -21,7 +21,7 @@ detect() {
 	local base=$1 head=$2 pattern=$3
 	output_file="$test_root/output"
 	: >"$output_file"
-	run env GITHUB_WORKSPACE="$repository" GITHUB_OUTPUT="$output_file" INPUT_TOKEN=test-token BASE_SHA="$base" HEAD_SHA="$head" INPUT_PATTERN="$pattern" bash "$repo_root/is-file-changed/is-file-changed.sh"
+	run env GITHUB_WORKSPACE="$repository" GITHUB_OUTPUT="$output_file" EVENT_NAME=push BASE_SHA="$base" HEAD_SHA="$head" INPUT_PATTERN="$pattern" bash "$repo_root/tests/fixtures/core-actions/run-is-file-changed.sh" "$repo_root"
 }
 
 @test "multi-commit ranges match exact paths" {
@@ -96,11 +96,11 @@ detect() {
 	grep -Fx 'changed=true' "$output_file"
 }
 
-@test "invalid regular expressions fail instead of returning false" {
+@test "invalid JavaScript regular expressions fail instead of returning false" {
 	head=$(git -C "$repository" rev-parse HEAD)
 	detect "$initial" "$head" '['
 	[ "$status" -ne 0 ]
-	[[ "$output" == *"invalid POSIX"* ]]
+	[[ "$output" == *"invalid JavaScript"* ]]
 }
 
 @test "missing endpoints fail closed with an actionable diagnostic" {

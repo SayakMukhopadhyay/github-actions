@@ -36,10 +36,10 @@ inputs:
 outputs:
   chart-name:
     description: Name of the packaged chart
-    value: ${{ steps.package.outputs.chart-name }}
+    value: ${{ steps.prepare.outputs.chart-name }}
   chart-version:
     description: Version of the packaged chart
-    value: ${{ steps.package.outputs.chart-version }}
+    value: ${{ steps.prepare.outputs.chart-version }}
 runs:
   using: composite
   steps:
@@ -51,6 +51,13 @@ runs:
       uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
       with:
         version: v4.2.4
+    - id: prepare
+      name: Prepare chart metadata
+      uses: $/actions/helm-package-push
+      with:
+        development: ${{ inputs.development }}
+        working-directory: ${{ inputs.working-directory }}
+        commit-sha: ${{ github.sha }}
     - name: Log in to OCI registry
       if: inputs.push == 'true'
       shell: bash
@@ -59,19 +66,17 @@ runs:
         USERNAME: ${{ inputs.username }}
         PASSWORD: ${{ inputs.password }}
       run: 'printf "%s" "$PASSWORD" | helm registry login "$REGISTRY" --username "$USERNAME" --password-stdin'
-    - id: package
-      name: Build, package, and optionally push chart
+    - name: Build, package, and optionally push chart
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        INPUT_DEVELOPMENT: ${{ inputs.development }}
+        INPUT_CHART_DIRECTORY: ${{ steps.prepare.outputs.chart-directory }}
+        INPUT_CHART_NAME: ${{ steps.prepare.outputs.chart-name }}
+        INPUT_CHART_VERSION: ${{ steps.prepare.outputs.chart-version }}
+        INPUT_REPOSITORIES_FILE: ${{ steps.prepare.outputs.repositories-file }}
         INPUT_PUSH: ${{ inputs.push }}
         INPUT_APP_VERSION: ${{ inputs.app-version }}
-        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         INPUT_REGISTRY: ${{ inputs.registry }}
         INPUT_REPOSITORY: ${{ inputs.repository }}
-        REGISTRY_USERNAME: ${{ inputs.username }}
-        REGISTRY_PASSWORD: ${{ inputs.password }}
-        COMMIT_SHA: ${{ github.sha }}
         REPOSITORY_OWNER: ${{ github.repository_owner }}
-      run: 'bash "$ACTION_PATH/helm-package-push.sh"'
+      run: 'bash "$ACTION_PATH/helm-transaction.sh"'

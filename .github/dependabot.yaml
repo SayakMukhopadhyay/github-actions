@@ -6,9 +6,22 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
-  - package-ecosystem: pip
+    groups:
+      github-actions:
+        patterns:
+          - '*'
+  - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
+    groups:
+      runtime-dependencies:
+        dependency-type: production
+        patterns:
+          - '*'
+      development-dependencies:
+        dependency-type: development
+        patterns:
+          - '*'

@@ -1,0 +1,264 @@
+name: Promote v1
+
+on:
+  workflow_dispatch:
+    inputs:
+      target-sha:
+        description: Full commit SHA from the main branch to promote or roll back to
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-v1
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve promotion target
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      checks: read
+      contents: read
+    outputs:
+      current-v1: ${{ steps.resolve.outputs.current-v1 }}
+      target-sha: ${{ steps.resolve.outputs.target-sha }}
+    steps:
+      - name: Checkout main with tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - id: resolve
+        name: Validate target and current v1
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TARGET_SHA: ${{ inputs.target-sha }}
+        run: |
+          set -euo pipefail
+
+          [[ $INPUT_TARGET_SHA =~ ^[0-9a-fA-F]{40}$ ]] || {
+            printf 'target-sha must be a full 40-character commit SHA.\n' >&2
+            exit 1
+          }
+
+          target_sha=$(git rev-parse --verify "$INPUT_TARGET_SHA^{commit}")
+          [[ ${target_sha,,} == ${INPUT_TARGET_SHA,,} ]] || {
+            printf 'target-sha does not resolve to the supplied commit.\n' >&2
+            exit 1
+          }
+          git merge-base --is-ancestor "$target_sha" origin/main || {
+            printf 'Target %s is not reachable from origin/main.\n' "$target_sha" >&2
+            exit 1
+          }
+
+          action_fixture_check=$(
+            gh api \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "repos/$GITHUB_REPOSITORY/commits/$target_sha/check-runs?filter=latest&per_page=100" \
+              --jq '[.check_runs[] | select(.name == "Credential-free action fixtures" and .app.slug == "github-actions")] | sort_by(.started_at) | last'
+          )
+          [[ -n $action_fixture_check && $action_fixture_check != null ]] || {
+            printf 'Target %s has no required Credential-free action fixtures check run.\n' "$target_sha" >&2
+            exit 1
+          }
+          [[ $(jq -r '.status' <<<"$action_fixture_check") == completed ]] || {
+            printf 'The target action-level fixture check has not completed.\n' >&2
+            exit 1
+          }
+          [[ $(jq -r '.conclusion' <<<"$action_fixture_check") == success ]] || {
+            printf 'The target action-level fixture check did not succeed.\n' >&2
+            exit 1
+          }
+
+          current_v1=$(git rev-parse --verify refs/tags/v1)
+          [[ $(git cat-file -t "$current_v1") == commit ]] || {
+            printf 'The current v1 reference is not a lightweight commit tag.\n' >&2
+            exit 1
+          }
+
+          printf 'target-sha=%s\n' "$target_sha" >>"$GITHUB_OUTPUT"
+          printf 'current-v1=%s\n' "$current_v1" >>"$GITHUB_OUTPUT"
+
+  validate:
+    name: Revalidate exact target
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      attestations: read
+      contents: read
+    steps:
+      - name: Checkout exact target
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.target-sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.2.4
+
+      - name: Checkout Bats
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: bats-core/bats-core
+          ref: eb7f42f8d608ac693d7a4b67474f6714ea68cfc5 # v1.14.0
+          path: .tools/bats
+          persist-credentials: false
+
+      - name: Add Bats to PATH
+        run: echo "$GITHUB_WORKSPACE/.tools/bats/bin" >>"$GITHUB_PATH"
+
+      - name: Type-check TypeScript
+        run: npm run typecheck
+
+      - name: Lint TypeScript
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Run pure Node.js tests
+        run: npm run test:node
+
+      - name: Run shell integration tests
+        run: npm run test:shell
+
+      - name: Regenerate consumer action schema
+        run: npm run schema:generate
+
+      - name: Reject consumer schema drift
+        run: git diff --exit-code -- schemas/action-inputs.schema.json
+
+      - name: Extract released v1 contracts
+        run: bash tooling/extract-v1-contracts.sh "$RUNNER_TEMP/v1-actions"
+
+      - name: Check public v1 compatibility
+        run: npm run contracts:check -- "$RUNNER_TEMP/v1-actions"
+
+      - name: Rebuild ESM action bundles
+        run: npm run bundle
+
+      - name: Reject action bundle drift
+        run: >-
+          git diff --exit-code --
+          check-version/dist
+          actions/is-file-changed/dist
+          actions/bump-version/dist
+          actions/helm-package-push/dist
+          actions/create-release/dist
+
+      - name: Smoke-check ESM action bundles
+        run: |
+          node --check check-version/dist/index.mjs
+          node --check actions/is-file-changed/dist/index.mjs
+          node --check actions/bump-version/dist/index.mjs
+          node --check actions/helm-package-push/dist/index.mjs
+          node --check actions/create-release/dist/index.mjs
+
+      - name: Install ShellCheck
+        env:
+          SHELLCHECK_VERSION: 0.11.0
+          SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+        run: bash scripts/install-shellcheck.sh
+
+      - name: Lint shell scripts
+        run: |
+          mapfile -d '' shell_files < <(
+            find . -type f -name '*.sh' \
+              -not -path './.git/*' \
+              -not -path './.tools/*' \
+              -not -path './node_modules/*' \
+              -print0
+          )
+          shellcheck --external-sources --source-path=SCRIPTDIR "${shell_files[@]}"
+
+      - name: Install verified actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          GH_TOKEN: ${{ github.token }}
+        run: bash tooling/install-actionlint.sh "$RUNNER_TEMP/actionlint-bin"
+
+      - name: Lint workflows
+        run: '"$RUNNER_TEMP/actionlint-bin/actionlint"'
+
+      - name: Audit workflow security
+        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        with:
+          version: 1.30.0
+          online-audits: false
+          advanced-security: false
+          annotations: true
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.4'
+
+      - name: Set up Licensed
+        uses: licensee/setup-licensed@0d52e575b3258417672be0dff2f115d7db8771d8 # v1.3.2
+        with:
+          version: 5.1.0
+
+      - name: Check cached dependency licenses
+        run: licensed status
+
+      - name: Require a clean validated tree
+        run: |
+          if [[ -n $(git status --porcelain --untracked-files=all) ]]; then
+            git status --short --untracked-files=all
+            printf 'Validation changed the target tree. Commit every generated artifact before promotion.\n' >&2
+            exit 1
+          fi
+
+  # The resolve job verifies the exact target's required main CI action fixture check.
+  # The fixtures are not repeated here because checkout steps nested inside those
+  # composites resolve the dispatch event SHA, not a dynamically selected rollback target.
+  promote:
+    name: Move lightweight v1 tag
+    needs:
+      - resolve
+      - validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout exact validated target
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.target-sha }}
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: true # zizmor: ignore[artipacked] required only for the immediate tag push
+
+      - name: Move v1 with lease protection
+        env:
+          CURRENT_V1: ${{ needs.resolve.outputs.current-v1 }}
+          TARGET_SHA: ${{ needs.resolve.outputs.target-sha }}
+        run: |
+          set -euo pipefail
+
+          git tag --force v1 "$TARGET_SHA"
+          git push origin refs/tags/v1:refs/tags/v1 \
+            "--force-with-lease=refs/tags/v1:$CURRENT_V1"

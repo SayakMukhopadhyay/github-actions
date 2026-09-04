@@ -2,7 +2,7 @@ name: Is File Changed
 description: Detect a path pattern across the complete Git push range
 inputs:
   pattern:
-    description: POSIX extended regular expression matched against changed repository paths
+    description: JavaScript regular expression matched against changed repository paths
     required: true
   token:
     description: Token used to checkout and fetch the repository
@@ -11,41 +11,39 @@ inputs:
 outputs:
   changed:
     description: Whether any changed path matched the pattern
-    value: ${{ steps.detect.outputs.changed }}
+    value: ${{ steps.match.outputs.changed }}
 runs:
   using: composite
   steps:
-    - id: range
-      name: Resolve push range
+    - name: Validate push range
       shell: bash
       env:
-        INPUT_PATTERN: ${{ inputs.pattern }}
+        ACTION_PATH: ${{ github.action_path }}
         EVENT_NAME: ${{ github.event_name }}
-        EVENT_BEFORE: ${{ github.event.before }}
-        EVENT_AFTER: ${{ github.event.after }}
-      run: |
-        set -euo pipefail
-        [[ -n "$INPUT_PATTERN" ]] || { echo '::error::pattern is required' >&2; exit 1; }
-        [[ "$EVENT_NAME" == push ]] || { echo '::error::is-file-changed supports push events only' >&2; exit 1; }
-        [[ "$EVENT_BEFORE" =~ ^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$ ]] || { echo '::error::push before SHA must be a full object ID' >&2; exit 1; }
-        [[ "$EVENT_AFTER" =~ ^([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$ && ! "$EVENT_AFTER" =~ ^0+$ ]] || { echo '::error::push after SHA must be a non-zero full object ID' >&2; exit 1; }
-        printf 'base-sha=%s\n' "${EVENT_BEFORE,,}" >> "$GITHUB_OUTPUT"
-        printf 'head-sha=%s\n' "${EVENT_AFTER,,}" >> "$GITHUB_OUTPUT"
-    - name: Checkout comparison head
+        BASE_SHA: ${{ github.event.before }}
+        HEAD_SHA: ${{ github.event.after }}
+      run: 'bash "$ACTION_PATH/collect-changed-files.sh" validate'
+    - name: Checkout repository history
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        ref: ${{ steps.range.outputs.head-sha }}
+        ref: ${{ github.event.after }}
         fetch-depth: 0
         fetch-tags: false
         # Credentials are retained only so an orphaned force-push endpoint can be fetched.
         persist-credentials: true # zizmor: ignore[artipacked] intentional
         token: ${{ inputs.token }}
     - id: detect
-      name: Detect changed paths
+      name: Collect changed paths
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        INPUT_PATTERN: ${{ inputs.pattern }}
-        BASE_SHA: ${{ steps.range.outputs.base-sha }}
-        HEAD_SHA: ${{ steps.range.outputs.head-sha }}
-      run: 'bash "$ACTION_PATH/is-file-changed.sh"'
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_SHA: ${{ github.event.before }}
+        HEAD_SHA: ${{ github.event.after }}
+      run: 'bash "$ACTION_PATH/collect-changed-files.sh" collect'
+    - id: match
+      name: Detect changed paths
+      uses: $/actions/is-file-changed
+      with:
+        pattern: ${{ inputs.pattern }}
+        changed-files: ${{ steps.detect.outputs.changed-files }}

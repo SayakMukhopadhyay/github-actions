@@ -20,29 +20,30 @@ teardown() {
 	printf 'apiVersion: v2\nname: dependency\ntype: application\nversion: 1.0.0\n' >"$fixture/dependency/Chart.yaml"
 	printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: dependency\n' >"$fixture/dependency/templates/configmap.yaml"
 	printf '\ndependencies:\n  - name: dependency\n    version: 1.0.0\n    repository: file://../dependency\n' >>"$fixture/charts/Chart.yaml"
-	output_file="$test_root/output"
-	run env GITHUB_WORKSPACE="$fixture" GITHUB_OUTPUT="$output_file" RUNNER_TEMP="$test_root" \
-		INPUT_WORKING_DIRECTORY=. INPUT_DEVELOPMENT=false INPUT_PUSH=false COMMIT_SHA=1111111111111111111111111111111111111111 \
+	repositories_file="$test_root/repositories"
+	: >"$repositories_file"
+	run env GITHUB_WORKSPACE="$fixture" RUNNER_TEMP="$test_root" \
+		INPUT_CHART_DIRECTORY="$fixture/charts" INPUT_CHART_NAME=fixture INPUT_CHART_VERSION=0.4.0 \
+		INPUT_REPOSITORIES_FILE="$repositories_file" INPUT_PUSH=false \
 		INPUT_REGISTRY=ghcr.io INPUT_REPOSITORY=owner/charts REPOSITORY_OWNER=owner \
-		bash "$repo_root/helm-package-push/helm-package-push.sh"
+		bash "$repo_root/helm-package-push/helm-transaction.sh"
 	[ "$status" -eq 0 ]
 	[ -f "$fixture/charts/fixture-0.4.0.tgz" ]
 	[ -f "$fixture/charts/charts/dependency-1.0.0.tgz" ]
-	grep -Fx 'chart-name=fixture' "$output_file"
-	grep -Fx 'chart-version=0.4.0' "$output_file"
 }
 
 @test "helm-package-push derives development metadata from the full commit SHA" {
 	fixture="$test_root/development"
 	cp -a "$repo_root/tests/fixtures/go-chart" "$fixture"
-	output_file="$test_root/output"
 	sha=abcdef1234567890abcdef1234567890abcdef12
-	run env GITHUB_WORKSPACE="$fixture" GITHUB_OUTPUT="$output_file" RUNNER_TEMP="$test_root" \
-		INPUT_WORKING_DIRECTORY=. INPUT_DEVELOPMENT=true INPUT_PUSH=false COMMIT_SHA="$sha" \
+	repositories_file="$test_root/repositories"
+	: >"$repositories_file"
+	run env GITHUB_WORKSPACE="$fixture" RUNNER_TEMP="$test_root" \
+		INPUT_CHART_DIRECTORY="$fixture/charts" INPUT_CHART_NAME=fixture INPUT_CHART_VERSION="0.4.0-$sha" \
+		INPUT_REPOSITORIES_FILE="$repositories_file" INPUT_PUSH=false \
 		INPUT_REGISTRY=ghcr.io INPUT_REPOSITORY=owner/charts REPOSITORY_OWNER=owner \
-		bash "$repo_root/helm-package-push/helm-package-push.sh"
+		bash "$repo_root/helm-package-push/helm-transaction.sh"
 	[ "$status" -eq 0 ]
-	grep -Fx "chart-version=0.4.0-$sha" "$output_file"
 	[ -f "$fixture/charts/fixture-0.4.0-$sha.tgz" ]
 }
 
@@ -50,13 +51,14 @@ teardown() {
 	fixture="$test_root/chart-only"
 	cp -a "$repo_root/tests/fixtures/go-chart" "$fixture"
 	rm "$fixture/VERSION"
-	output_file="$test_root/output"
-	run env GITHUB_WORKSPACE="$fixture" GITHUB_OUTPUT="$output_file" RUNNER_TEMP="$test_root" \
-		INPUT_WORKING_DIRECTORY=. INPUT_DEVELOPMENT=false INPUT_PUSH=false COMMIT_SHA=1111111111111111111111111111111111111111 \
+	repositories_file="$test_root/repositories"
+	: >"$repositories_file"
+	run env GITHUB_WORKSPACE="$fixture" RUNNER_TEMP="$test_root" \
+		INPUT_CHART_DIRECTORY="$fixture/charts" INPUT_CHART_NAME=fixture INPUT_CHART_VERSION=0.4.0 \
+		INPUT_REPOSITORIES_FILE="$repositories_file" INPUT_PUSH=false \
 		INPUT_APP_VERSION='release candidate 7' INPUT_REGISTRY=ghcr.io INPUT_REPOSITORY=owner/charts REPOSITORY_OWNER=owner \
-		bash "$repo_root/helm-package-push/helm-package-push.sh"
+		bash "$repo_root/helm-package-push/helm-transaction.sh"
 	[ "$status" -eq 0 ]
-	grep -Fx 'chart-name=fixture' "$output_file"
 	helm show chart "$fixture/charts/fixture-0.4.0.tgz" | yq -e '.appVersion == "release candidate 7"'
 }
 

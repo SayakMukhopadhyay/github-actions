@@ -1,0 +1,23 @@
+name: Mutate Project Versions
+description: Internal implementation for the public bump-version composite action
+inputs:
+  increment:
+    description: patch, minor, or major
+    required: true
+  working-directory:
+    description: Working directory of the project
+    required: true
+  helm:
+    description: Whether to bump Helm chart metadata
+    required: true
+  go:
+    description: Whether to bump application version metadata
+    required: true
+outputs:
+  application-version:
+    description: New application version, or empty when it was not selected
+  chart-version:
+    description: New chart version, or empty when it was not selected
+runs:
+  using: node24
+  main: dist/index.mjs

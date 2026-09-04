@@ -10,4 +10,4 @@ url="https://github.com/koalaman/shellcheck/releases/download/v$version/shellche
 curl --fail --location --silent --show-error --retry 3 --retry-all-errors --max-time 120 --output "$archive" "$url"
 printf '%s  %s\n' "$expected" "$archive" | sha256sum --check --status
 tar -xJf "$archive" -C "${RUNNER_TEMP:-/tmp}"
-printf '%s\n' "${RUNNER_TEMP:-/tmp}/shellcheck-v$version" >>"$GITHUB_PATH"
+printf '%s\n' "${RUNNER_TEMP:-/tmp}/shellcheck-v$version" >> "$GITHUB_PATH"

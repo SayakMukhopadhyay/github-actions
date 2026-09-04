@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+method=GET
+input_file=''
+endpoint=''
+while (($# > 0)); do
+  case "$1" in
+    --method)
+      method=$2
+      shift 2
+      ;;
+    --input)
+      input_file=$2
+      shift 2
+      ;;
+    *)
+      endpoint=$1
+      shift
+      ;;
+  esac
+done
+
+printf '%s %s\n' "$method" "$endpoint" >> "$MOCK_GH_CALLS"
+printf 'github-token=%s openai-key=%s\n' "${GH_TOKEN:-}" "${INPUT_OPENAI_API_KEY:-}" >> "$MOCK_GH_ENV"
+
+if [[ "${MOCK_GH_MODE:-}" == leak-failure ]]; then
+  printf 'mock leaked GitHub token: %s\n' "${GH_TOKEN:-}" >&2
+  exit 1
+fi
+
+if [[ "$method" == GET ]]; then
+  if [[ "$endpoint" == *'/git/ref/tags/'* ]]; then
+    encoded_target=$(jq -nr --arg value "$MOCK_TARGET_TAG" '$value | @uri')
+    encoded_previous=$(jq -nr --arg value "${MOCK_PREVIOUS_TAG:-}" '$value | @uri')
+    if [[ "$endpoint" == */"$encoded_target" ]]; then
+      printf '{"ref":"refs/tags/%s","object":{"sha":"%s","type":"%s"}}\n' \
+        "$MOCK_TARGET_TAG" "$MOCK_TARGET_OBJECT" "${MOCK_TARGET_TYPE:-commit}"
+      exit 0
+    fi
+    if [[ -n "${MOCK_PREVIOUS_TAG:-}" && "$endpoint" == */"$encoded_previous" ]]; then
+      printf '{"ref":"refs/tags/%s","object":{"sha":"%s","type":"%s"}}\n' \
+        "$MOCK_PREVIOUS_TAG" "$MOCK_PREVIOUS_OBJECT" "${MOCK_PREVIOUS_TYPE:-commit}"
+      exit 0
+    fi
+    printf 'gh: Not Found (HTTP 404)\n' >&2
+    exit 1
+  fi
+  if [[ -f "$MOCK_RELEASE_STATE" ]]; then
+    cat "$MOCK_RELEASE_STATE"
+    exit 0
+  fi
+  printf 'gh: Not Found (HTTP 404)\n' >&2
+  exit 1
+fi
+
+[[ "$method" == POST ]] || exit 2
+[[ -n "$input_file" ]] || exit 2
+cp "$input_file" "$MOCK_CREATE_REQUEST"
+
+if [[ "${MOCK_GH_MODE:-}" == race ]]; then
+  cp "$MOCK_RELEASE_FIXTURE" "$MOCK_RELEASE_STATE"
+  printf 'gh: Validation Failed (HTTP 422)\n' >&2
+  exit 1
+fi
+if [[ "${MOCK_GH_MODE:-}" == create-failure ]]; then
+  printf 'gh: server failure (HTTP 500)\n' >&2
+  exit 1
+fi
+
+cp "$MOCK_RELEASE_FIXTURE" "$MOCK_RELEASE_STATE"
+cat "$MOCK_RELEASE_FIXTURE"

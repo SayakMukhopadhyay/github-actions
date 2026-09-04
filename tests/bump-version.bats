@@ -24,7 +24,7 @@ run_bump() {
 		GITHUB_WORKSPACE="$repository" \
 		INPUT_INCREMENT=patch INPUT_WORKING_DIRECTORY=. INPUT_HELM="$helm" \
 		INPUT_GO="$go" TARGET_REF=main \
-		bash "$repo_root/bump-version/bump-version.sh"
+		bash "$repo_root/tests/fixtures/core-actions/run-bump-version.sh" "$repo_root"
 }
 
 @test "Helm and Go selectors bump and commit only three declared files" {
