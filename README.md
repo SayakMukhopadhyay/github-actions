@@ -73,17 +73,22 @@ steps:
 
 ## `container-build-push`
 
-`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes `registry/image-repository[/component]:version`. It preserves the reference action's component and additional-build-context behavior, and passes the existing optional `auth-token` input to BuildKit safely.
+`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes `registry/image-repository[/component]:version`. It preserves the reference action's component and additional-build-context behavior, forwards optional multiline `build-args` unchanged to Docker Buildx, and passes the existing optional `auth-token` input to BuildKit safely.
 
 ```yaml
 - uses: SayakMukhopadhyay/github-actions/container-build-push@v1
   with:
-    version: build-${{ github.sha }}
+    version: ${{ env.VERSION }}
     registry: ghcr.io
     image-repository: ${{ github.repository }}
     working-directory: .
+    build-args: |
+      VERSION=${{ env.VERSION }}
+      COMMIT=${{ github.sha }}
     push: 'false'
 ```
+
+In this example, the caller obtains `VERSION` from its authoritative root `VERSION` file; `COMMIT` is the current GitHub SHA. These build arguments can populate application linker metadata, while the action independently supplies dynamic OCI `created`, `version`, `revision`, and `source` labels. Build arguments are not secrets: use `auth-token` for the supported BuildKit secret and never put credentials in `build-args`.
 
 For publication, provide `username` and `password` (the password may be `github.token`). GHCR requires `packages: write`.
 

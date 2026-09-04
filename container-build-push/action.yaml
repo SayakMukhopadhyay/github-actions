@@ -32,6 +32,10 @@ inputs:
     description: Additional named Docker build contexts
     required: false
     default: ''
+  build-args:
+    description: Optional build arguments forwarded unchanged to Docker Buildx
+    required: false
+    default: ''
   registry:
     description: Container registry host
     required: false
@@ -72,6 +76,7 @@ runs:
       with:
         context: ${{ inputs.working-directory }}
         build-contexts: ${{ inputs.build-contexts }}
+        build-args: ${{ inputs.build-args }}
         secrets: ${{ inputs.auth-token != '' && format('auth-token={0}', inputs.auth-token) || '' }}
         pull: true
         push: ${{ inputs.push }}

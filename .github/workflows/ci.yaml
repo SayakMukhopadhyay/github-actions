@@ -104,6 +104,9 @@ jobs:
         with:
           version: ci
           working-directory: tests/fixtures/go-chart
+          build-args: |
+            VERSION=fixture-version
+            COMMIT=fixture-commit
           push: 'false'
       - name: Package fixture chart
         uses: $/helm-package-push
