@@ -24,6 +24,23 @@ detect() {
 	run env GITHUB_WORKSPACE="$repository" GITHUB_OUTPUT="$output_file" EVENT_NAME=push BASE_SHA="$base" HEAD_SHA="$head" INPUT_PATTERN="$pattern" bash "$repo_root/tests/fixtures/core-actions/run-is-file-changed.sh" "$repo_root"
 }
 
+changed_value() {
+	awk '
+		/^changed=/ { print substr($0, length("changed=") + 1); exit }
+		/^changed<</ {
+			delimiter = substr($0, index($0, "<<") + 2)
+			collecting = 1
+			next
+		}
+		collecting && $0 == delimiter { exit }
+		collecting { print }
+	' "$output_file"
+}
+
+assert_changed() {
+	[[ "$(changed_value)" == "$1" ]]
+}
+
 @test "multi-commit ranges match exact paths" {
 	printf 'middle\n' >"$repository/other.txt"
 	git -C "$repository" add . && git -C "$repository" commit -q -m middle
@@ -32,7 +49,7 @@ detect() {
 	head=$(git -C "$repository" rev-parse HEAD)
 	detect "$initial" "$head" '^VERSION$'
 	[ "$status" -eq 0 ]
-	grep -Fx 'changed=true' "$output_file"
+	assert_changed true
 }
 
 @test "non-matching ranges return deterministic false" {
@@ -41,7 +58,7 @@ detect() {
 	head=$(git -C "$repository" rev-parse HEAD)
 	detect "$initial" "$head" '^(VERSION|charts/)'
 	[ "$status" -eq 0 ]
-	grep -Fx 'changed=false' "$output_file"
+	assert_changed false
 }
 
 @test "renames match both old and new names and deletions match old names" {
@@ -50,17 +67,17 @@ detect() {
 	renamed=$(git -C "$repository" rev-parse HEAD)
 	detect "$initial" "$renamed" '^keep\.txt$'
 	[ "$status" -eq 0 ]
-	grep -Fx 'changed=true' "$output_file"
+	assert_changed true
 	detect "$initial" "$renamed" '^new name;\$\(safe\)\.txt$'
 	[ "$status" -eq 0 ]
-	grep -Fx 'changed=true' "$output_file"
+	assert_changed true
 
 	git -C "$repository" rm -q 'new name;$(safe).txt'
 	git -C "$repository" commit -q -m delete
 	deleted=$(git -C "$repository" rev-parse HEAD)
 	detect "$renamed" "$deleted" '^new name;\$\(safe\)\.txt$'
 	[ "$status" -eq 0 ]
-	grep -Fx 'changed=true' "$output_file"
+	assert_changed true
 }
 
 @test "copies match both source and destination paths" {
@@ -70,10 +87,10 @@ detect() {
 
 	detect "$initial" "$head" '^keep\.txt$'
 	[ "$status" -eq 0 ]
-	grep -Fx 'changed=true' "$output_file"
+	assert_changed true
 	detect "$initial" "$head" '^copied file\.txt$'
 	[ "$status" -eq 0 ]
-	grep -Fx 'changed=true' "$output_file"
+	assert_changed true
 }
 
 @test "initial pushes compare the complete root tree" {
@@ -82,7 +99,7 @@ detect() {
 	head=$(git -C "$repository" rev-parse HEAD)
 	detect 0000000000000000000000000000000000000000 "$head" '^VERSION$'
 	[ "$status" -eq 0 ]
-	grep -Fx 'changed=true' "$output_file"
+	assert_changed true
 }
 
 @test "unrelated force-push endpoints compare trees directly" {
@@ -93,7 +110,7 @@ detect() {
 	head=$(git -C "$repository" rev-parse HEAD)
 	detect "$initial" "$head" '^VERSION$'
 	[ "$status" -eq 0 ]
-	grep -Fx 'changed=true' "$output_file"
+	assert_changed true
 }
 
 @test "invalid JavaScript regular expressions fail instead of returning false" {

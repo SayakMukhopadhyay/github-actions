@@ -24,7 +24,7 @@
     "test": "npm run test:node && npm run test:shell",
     "test:node": "node --test tests/**/*.test.ts",
     "test:schema": "node --test tests/schema.test.ts",
-    "test:shell": "bats tests"
+    "test:shell": "bats --print-output-on-failure tests"
   },
   "dependencies": {
     "@actions/core": "3.0.1",
