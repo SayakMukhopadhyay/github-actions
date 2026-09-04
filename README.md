@@ -1,8 +1,8 @@
 # Personal GitHub Actions
 
-Eight GitHub Actions for Go applications, container images, Helm charts, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, and file mutation that benefits from structured code is authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
+Nine GitHub Actions for Go applications, container images, Helm charts, immutable release tags, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, and file mutation that benefits from structured code is authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
 
-The existing `@v1` release contains the original seven actions. The new `create-release` action is available from the repository after `v1` is promoted to a commit that contains it.
+The current `@v1` release contains the existing eight actions. The new `release-tags` action becomes available only after `v1` is explicitly promoted to a commit that contains it.
 
 ## Input conventions
 
@@ -129,6 +129,29 @@ For publication, provide `username` and `password`. Outputs are `chart-name` and
 The preferred `token` is a short-lived GitHub App installation token limited to the target repository with `contents: write`; a repository-limited fine-grained PAT is the fallback. Optional OCI authentication uses `registry`, `username`, and `password`.
 
 The action permits only the selected `Chart.yaml`, `Chart.lock`, and dependency archives to change, stages exactly those files, rejects stale no-ops, and relies on a normal non-force push to reject races.
+
+## `release-tags`
+
+`SayakMukhopadhyay/github-actions/release-tags@v1` verifies or ensures a caller-selected set of immutable release tags at the exact caller commit, `${{ github.sha }}`. The default `verify` mode is read-only and reports its result through `tags-match`; `ensure` requires `contents: write` and creates only missing lightweight tags.
+
+```yaml
+permissions:
+  contents: write
+
+steps:
+  - id: tags
+    uses: SayakMukhopadhyay/github-actions/release-tags@v1
+    with:
+      token: ${{ github.token }}
+      mode: ensure
+      tags: |
+        v${{ needs.version.outputs.application-version }}
+        charts/v${{ needs.version.outputs.chart-version }}
+```
+
+Inputs are required `token`, required newline-delimited `tags`, and optional `mode`, which accepts `verify` or `ensure` and defaults to `verify`. Output `tags-match` is `true` only when every requested tag exists and resolves to `${{ github.sha }}`. Verification reports missing or mismatched tags without changing the repository. Ensure mode validates the complete tag list first, rejects duplicates, invalid names, and tags resolving elsewhere, then pushes every missing ref in one atomic non-force operation. It re-verifies the remote after the push, so retries and concurrent same-target creation are idempotent while a competing target fails closed.
+
+The checkout and remote Git operations receive `token` without persisting credentials. The caller still owns events, jobs, conditions, permissions, environments, concurrency, release ordering, approval gates, and the decision to verify or create application and chart tags.
 
 ## `create-release`
 

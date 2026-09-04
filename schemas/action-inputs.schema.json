@@ -391,6 +391,39 @@
                     },
                     "required": ["with"]
                   }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "uses": { "const": "SayakMukhopadhyay/github-actions/release-tags@v1" }
+                    },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "GitHub token with contents read permission, plus contents write permission in ensure mode"
+                          },
+                          "tags": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Newline-delimited Git tag names"
+                          },
+                          "mode": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "verify for a read-only check or ensure to create missing tags",
+                            "default": "verify"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["token", "tags"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
                 }
               ]
             }

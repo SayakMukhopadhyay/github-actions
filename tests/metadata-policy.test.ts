@@ -16,6 +16,8 @@ interface ActionOutput {
 }
 
 interface ActionStep {
+  env?: Record<string, unknown>;
+  id?: unknown;
   run?: unknown;
   shell?: unknown;
   uses?: unknown;
@@ -125,6 +127,32 @@ void test('container build metadata preserves safe optional forwarding', () => {
   );
   assert.equal(buildSteps.length, 1);
   assert.equal(buildSteps[0]?.with?.['build-args'], '${{ inputs.build-args }}');
+});
+
+void test('release-tags fixes the target and keeps Git credentials ephemeral', () => {
+  const metadata = readAction('release-tags');
+  assert.equal(metadata.inputs?.token?.required, true);
+  assert.equal(metadata.inputs?.tags?.required, true);
+  assert.equal(metadata.inputs?.mode?.default, 'verify');
+  assert.equal(metadata.outputs?.['tags-match']?.value, '${{ steps.tags.outputs.tags-match }}');
+
+  const checkoutSteps = (metadata.runs?.steps ?? []).filter(
+    (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
+  );
+  assert.equal(checkoutSteps.length, 1);
+  assert.equal(checkoutSteps[0]?.with?.ref, '${{ github.sha }}');
+  assert.equal(checkoutSteps[0]?.with?.['fetch-tags'], false);
+  assert.equal(checkoutSteps[0]?.with?.['persist-credentials'], false);
+
+  const transactionSteps = (metadata.runs?.steps ?? []).filter((step) => step.id === 'tags');
+  assert.equal(transactionSteps.length, 1);
+  assert.equal(transactionSteps[0]?.env?.INPUT_TOKEN, '${{ inputs.token }}');
+  assert.equal(transactionSteps[0]?.env?.TARGET_SHA, '${{ github.sha }}');
+
+  const transaction = readFileSync(path.join(root, 'release-tags', 'release-tags.sh'), 'utf8');
+  assert.match(transaction, /unset INPUT_TOKEN/u);
+  assert.match(transaction, /git_remote push --atomic --no-force/u);
+  assert.doesNotMatch(transaction, /git tag/u);
 });
 
 void test('CI exercises multiline container build arguments through the consumer action', () => {

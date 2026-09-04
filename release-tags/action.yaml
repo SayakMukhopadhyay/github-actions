@@ -1,0 +1,39 @@
+name: Release Tags
+description: Verify or atomically ensure immutable release tags at the caller commit
+inputs:
+  token:
+    description: GitHub token with contents read permission, plus contents write permission in ensure mode
+    required: true
+  tags:
+    description: Newline-delimited Git tag names
+    required: true
+  mode:
+    description: verify for a read-only check or ensure to create missing tags
+    required: false
+    default: verify
+outputs:
+  tags-match:
+    description: Whether every requested tag exists and resolves to the caller commit
+    value: ${{ steps.tags.outputs.tags-match }}
+runs:
+  using: composite
+  steps:
+    - name: Check out the caller commit
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 1
+        fetch-tags: false
+        persist-credentials: false
+        token: ${{ inputs.token }}
+
+    - id: tags
+      name: Verify or ensure release tags
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_TAGS: ${{ inputs.tags }}
+        INPUT_TOKEN: ${{ inputs.token }}
+        TARGET_SHA: ${{ github.sha }}
+      run: 'bash "$ACTION_PATH/release-tags.sh"'

@@ -57,6 +57,13 @@ void test('accepts valid inputs for each documented consumer action', async () =
         'openai-api-key': '${{ secrets.OPENAI_API_KEY }}',
       },
     ],
+    [
+      'release-tags',
+      {
+        token: '${{ secrets.GITHUB_TOKEN }}',
+        tags: 'v1.2.3\ncharts/v1.2.3',
+      },
+    ],
   ];
 
   for (const [action, withInputs] of validActions) {
