@@ -43,7 +43,7 @@ jobs:
           }
 
           target_sha=$(git rev-parse --verify "$INPUT_TARGET_SHA^{commit}")
-          [[ ${target_sha,,} == ${INPUT_TARGET_SHA,,} ]] || {
+          [[ "${target_sha,,}" == "${INPUT_TARGET_SHA,,}" ]] || {
             printf 'target-sha does not resolve to the supplied commit.\n' >&2
             exit 1
           }
