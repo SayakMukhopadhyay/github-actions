@@ -18,6 +18,10 @@ write_match_output() {
   printf 'tags-match=%s\n' "$1" >> "$GITHUB_OUTPUT"
 }
 
+write_exists_output() {
+  printf 'tags-exist=%s\n' "$1" >> "$GITHUB_OUTPUT"
+}
+
 git_remote() (
   local config_count=${GIT_CONFIG_COUNT:-0}
   export GIT_CONFIG_COUNT=$((config_count + 2))
@@ -90,8 +94,8 @@ token=${INPUT_TOKEN:-}
 unset INPUT_TOKEN
 target_sha=${TARGET_SHA:-}
 
-[[ "$mode" == verify || "$mode" == ensure ]] \
-  || die 'mode must be verify or ensure'
+[[ "$mode" == exists || "$mode" == verify || "$mode" == ensure ]] \
+  || die 'mode must be exists, verify, or ensure'
 [[ -n "$tags_input" ]] || die 'tags is required'
 [[ -n "$token" ]] || die 'token is required'
 [[ "$token" != *$'\n'* && "$token" != *$'\r'* ]] \
@@ -146,6 +150,17 @@ declare -a conflicting_tags=()
 
 read_remote_tags
 classify_remote_tags
+
+if [[ "$mode" == exists ]]; then
+  if ((${#missing_tags[@]} == 0)); then
+    write_exists_output true
+    printf 'Every requested tag exists.\n'
+  else
+    write_exists_output false
+    printf 'Missing tags: %s\n' "${missing_tags[*]}"
+  fi
+  exit 0
+fi
 
 if [[ "$mode" == verify ]]; then
   if ((${#missing_tags[@]} == 0 && ${#conflicting_tags[@]} == 0)); then

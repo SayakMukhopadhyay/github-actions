@@ -45,7 +45,11 @@ remote_tag() {
 	git --git-dir="$bare" rev-parse "refs/tags/$1^{commit}" 2> /dev/null
 }
 
-make_racing_git() {
+remote_refs() {
+	git --git-dir="$bare" show-ref || true
+}
+
+make_instrumented_git() {
 	race_bin="$test_root/race-bin"
 	mkdir -p "$race_bin"
 	cat > "$race_bin/git" <<'EOF'
@@ -66,6 +70,7 @@ else
 	[[ $has_remote_auth == false ]] || { printf 'remote auth leaked to local git\n' >&2; exit 98; }
 fi
 if [[ ${1:-} == push ]]; then
+	[[ ${FAIL_ON_PUSH:-false} != true ]] || { printf 'unexpected push\n' >&2; exit 99; }
 	"$REAL_GIT" --git-dir="$RACE_REMOTE" update-ref "refs/tags/$RACE_TAG" "$RACE_OBJECT"
 	[[ ${RACE_ABORT_PUSH:-false} != true ]] || exit 1
 fi
@@ -81,6 +86,58 @@ EOF
 	grep -Fx 'tags-match=false' "$output_file"
 	! git --git-dir="$bare" show-ref --verify --quiet refs/tags/app/v1.2.3
 	! git --git-dir="$bare" show-ref --verify --quiet refs/tags/chart/v1.2.3
+}
+
+@test "exists reports false when every requested tag is absent without mutating the remote" {
+	refs_before=$(remote_refs)
+
+	run_release_tags exists $'app/v1.2.3\nchart/v1.2.3'
+	[ "$status" -eq 0 ]
+	grep -Fx 'tags-exist=false' "$output_file"
+	! grep -q '^tags-match=' "$output_file"
+	[ "$(remote_refs)" = "$refs_before" ]
+}
+
+@test "exists reports true for lightweight and annotated tags at arbitrary targets without mutating the remote" {
+	git --git-dir="$bare" update-ref refs/tags/app/v1.2.3 "$other_commit"
+	git -C "$repository" tag -a -m chart chart/v1.2.3 "$target_commit"
+	git -C "$repository" push -q origin refs/tags/chart/v1.2.3
+	refs_before=$(remote_refs)
+	make_instrumented_git
+
+	run_release_tags exists $'app/v1.2.3\nchart/v1.2.3' \
+		PATH="$race_bin:$PATH" \
+		REAL_GIT="$real_git" \
+		FAIL_ON_PUSH=true
+	[ "$status" -eq 0 ]
+	grep -Fx 'tags-exist=true' "$output_file"
+	! grep -q '^tags-match=' "$output_file"
+	[ "$(remote_refs)" = "$refs_before" ]
+}
+
+@test "exists reports false for a mixed present and absent set without mutating the remote" {
+	git --git-dir="$bare" update-ref refs/tags/app/v1.2.3 "$other_commit"
+	refs_before=$(remote_refs)
+
+	run_release_tags exists $'app/v1.2.3\nchart/v1.2.3'
+	[ "$status" -eq 0 ]
+	grep -Fx 'tags-exist=false' "$output_file"
+	[[ "$output" == *'Missing tags: chart/v1.2.3'* ]]
+	[ "$(remote_refs)" = "$refs_before" ]
+}
+
+@test "exists rejects duplicate and invalid tags before remote mutation" {
+	refs_before=$(remote_refs)
+
+	run_release_tags exists $'app/v1.2.3\napp/v1.2.3'
+	[ "$status" -ne 0 ]
+	[[ "$output" == *'duplicate tag'* ]]
+	[ "$(remote_refs)" = "$refs_before" ]
+
+	run_release_tags exists $'app/v1.2.3\nbad tag'
+	[ "$status" -ne 0 ]
+	[[ "$output" == *'invalid Git tag name'* ]]
+	[ "$(remote_refs)" = "$refs_before" ]
 }
 
 @test "verify accepts existing lightweight and annotated tags resolving to the target" {
@@ -117,7 +174,7 @@ EOF
 
 	run_release_tags publish app/v1.2.3
 	[ "$status" -ne 0 ]
-	[[ "$output" == *'mode must be verify or ensure'* ]]
+	[[ "$output" == *'mode must be exists, verify, or ensure'* ]]
 	! git --git-dir="$bare" show-ref --tags --quiet
 }
 
@@ -143,7 +200,7 @@ EOF
 }
 
 @test "ensure fails safely when a competing tag appears before the atomic push" {
-	make_racing_git
+	make_instrumented_git
 
 	run_release_tags ensure $'app/v1.2.3\nchart/v1.2.3' \
 		PATH="$race_bin:$PATH" \
@@ -158,7 +215,7 @@ EOF
 }
 
 @test "ensure accepts a failed push when a concurrent run created the same tag" {
-	make_racing_git
+	make_instrumented_git
 
 	run_release_tags ensure app/v1.2.3 \
 		PATH="$race_bin:$PATH" \

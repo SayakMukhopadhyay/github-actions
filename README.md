@@ -2,7 +2,7 @@
 
 Nine GitHub Actions for Go applications, container images, Helm charts, immutable release tags, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, and file mutation that benefits from structured code is authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
 
-The current `@v1` release contains the existing eight actions. The new `release-tags` action becomes available only after `v1` is explicitly promoted to a commit that contains it.
+The moving `@v1` release contains all nine actions documented here.
 
 ## Input conventions
 
@@ -132,7 +132,26 @@ The action permits only the selected `Chart.yaml`, `Chart.lock`, and dependency 
 
 ## `release-tags`
 
-`SayakMukhopadhyay/github-actions/release-tags@v1` verifies or ensures a caller-selected set of immutable release tags at the exact caller commit, `${{ github.sha }}`. The default `verify` mode is read-only and reports its result through `tags-match`; `ensure` requires `contents: write` and creates only missing lightweight tags.
+`SayakMukhopadhyay/github-actions/release-tags@v1` checks for, verifies, or ensures a caller-selected set of release tags. The read-only `exists` mode reports through `tags-exist` whether every requested tag exists, regardless of its target. The default `verify` mode reports through `tags-match` whether they all resolve to the exact caller commit, `${{ github.sha }}`. `ensure` requires `contents: write` and creates only missing lightweight tags.
+
+Use `exists` when release orchestration needs to distinguish a previously published tag from a release that has not started:
+
+```yaml
+permissions:
+  contents: read
+
+steps:
+  - id: release-tag
+    uses: SayakMukhopadhyay/github-actions/release-tags@v1
+    with:
+      token: ${{ github.token }}
+      mode: exists
+      tags: v${{ needs.version.outputs.application-version }}
+
+  - if: steps.release-tag.outputs.tags-exist == 'false'
+    # Start the release path that creates the tag.
+    run: ./start-release.sh
+```
 
 ```yaml
 permissions:
@@ -149,7 +168,9 @@ steps:
         charts/v${{ needs.version.outputs.chart-version }}
 ```
 
-Inputs are required `token`, required newline-delimited `tags`, and optional `mode`, which accepts `verify` or `ensure` and defaults to `verify`. Output `tags-match` is `true` only when every requested tag exists and resolves to `${{ github.sha }}`. Verification reports missing or mismatched tags without changing the repository. Ensure mode validates the complete tag list first, rejects duplicates, invalid names, and tags resolving elsewhere, then pushes every missing ref in one atomic non-force operation. It re-verifies the remote after the push, so retries and concurrent same-target creation are idempotent while a competing target fails closed.
+Inputs are required `token`, required newline-delimited `tags`, and optional `mode`, which accepts `exists`, `verify`, or `ensure` and defaults to `verify`. In `exists` mode, output `tags-exist` is `true` only when every requested tag exists; lightweight and annotated tags both count, and their target commits do not matter. In `verify` and `ensure` modes, the existing `tags-match` output is `true` only when every requested tag exists and resolves to `${{ github.sha }}`. The two outputs are mode-specific, so the unused output is an empty string rather than a second interpretation of the result.
+
+Existence and verification report missing or mismatched tags without changing the repository. Ensure mode validates the complete tag list first, rejects duplicates, invalid names, and tags resolving elsewhere, then pushes every missing ref in one atomic non-force operation. It re-verifies the remote after the push, so retries and concurrent same-target creation are idempotent while a competing target fails closed.
 
 The checkout and remote Git operations receive `token` without persisting credentials. The caller still owns events, jobs, conditions, permissions, environments, concurrency, release ordering, approval gates, and the decision to verify or create application and chart tags.
 

@@ -414,7 +414,7 @@
                           },
                           "mode": {
                             "type": ["string", "number", "boolean"],
-                            "description": "verify for a read-only check or ensure to create missing tags",
+                            "description": "exists to check presence, verify to check the caller commit, or ensure to create missing tags",
                             "default": "verify"
                           }
                         },

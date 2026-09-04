@@ -134,7 +134,11 @@ void test('release-tags fixes the target and keeps Git credentials ephemeral', (
   assert.equal(metadata.inputs?.token?.required, true);
   assert.equal(metadata.inputs?.tags?.required, true);
   assert.equal(metadata.inputs?.mode?.default, 'verify');
+  assert.match(String(metadata.inputs?.mode?.description), /\bexists\b/u);
+  assert.equal(metadata.outputs?.['tags-exist']?.value, '${{ steps.tags.outputs.tags-exist }}');
+  assert.match(String(metadata.outputs?.['tags-exist']?.description), /every requested tag exists/u);
   assert.equal(metadata.outputs?.['tags-match']?.value, '${{ steps.tags.outputs.tags-match }}');
+  assert.match(String(metadata.outputs?.['tags-match']?.description), /verify or ensure mode/u);
 
   const checkoutSteps = (metadata.runs?.steps ?? []).filter(
     (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
