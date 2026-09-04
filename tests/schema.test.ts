@@ -61,9 +61,7 @@ void test('accepts valid inputs for each documented consumer action', async () =
 
   for (const [action, withInputs] of validActions) {
     assert.equal(
-      await validateWorkflow(
-        workflowFor(`SayakMukhopadhyay/github-actions/${action}@v1`, withInputs),
-      ),
+      await validateWorkflow(workflowFor(`SayakMukhopadhyay/github-actions/${action}@v1`, withInputs)),
       true,
       action,
     );
@@ -82,10 +80,7 @@ void test('rejects an unknown action input', async () => {
 });
 
 void test('rejects a missing caller-required action input', async () => {
-  assert.equal(
-    await validateWorkflow(workflowFor('SayakMukhopadhyay/github-actions/is-file-changed@v1')),
-    false,
-  );
+  assert.equal(await validateWorkflow(workflowFor('SayakMukhopadhyay/github-actions/is-file-changed@v1')), false);
 });
 
 void test('permits metadata inputs that are required but have a default', async () => {

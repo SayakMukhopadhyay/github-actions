@@ -184,10 +184,7 @@ void test('deterministic rendering keeps model prose separate from Git-authorita
 
   assert.match(body, /^This release improves clarity &amp; safety\./u);
   assert.match(body, /## Highlights\n\n- Makes behavior easier to understand/u);
-  assert.match(
-    body,
-    /\/commit\/cccccccccccccccccccccccccccccccccccccccc\) Direct mainline change/u,
-  );
+  assert.match(body, /\/commit\/cccccccccccccccccccccccccccccccccccccccc\) Direct mainline change/u);
   assert.match(body, /\\\[links\\\]\\\(https:\/\/evil\.example\\\)/u);
   assert.match(body, /&#64;mentions/u);
   assert.match(body, /\/compare\/charts%2F0\.1\.0\.\.\.charts%2F0\.2\.0\)\n$/u);
@@ -252,14 +249,8 @@ void test('maximum accepted release facts always render within the publisher bod
 });
 
 void test('consumer composite scopes GitHub and OpenAI credentials to different processes', async () => {
-  const metadata = await readFile(
-    new URL('../create-release/action.yaml', import.meta.url),
-    'utf8',
-  );
-  const contextStep = metadata.slice(
-    metadata.indexOf('- id: context'),
-    metadata.indexOf('- id: preflight'),
-  );
+  const metadata = await readFile(new URL('../create-release/action.yaml', import.meta.url), 'utf8');
+  const contextStep = metadata.slice(metadata.indexOf('- id: context'), metadata.indexOf('- id: preflight'));
   const preflightStep = metadata.slice(
     metadata.indexOf('- id: preflight'),
     metadata.indexOf('- name: Generate and render'),
@@ -286,10 +277,7 @@ void test('consumer composite scopes GitHub and OpenAI credentials to different 
 });
 
 void test('create-release TypeScript never invokes external commands', async () => {
-  const source = await readFile(
-    new URL('../actions/create-release/create-release.ts', import.meta.url),
-    'utf8',
-  );
+  const source = await readFile(new URL('../actions/create-release/create-release.ts', import.meta.url), 'utf8');
 
   assert.doesNotMatch(source, /node:child_process|\bexec(?:File|Sync)?\b|\bspawn(?:Sync)?\b/u);
 });

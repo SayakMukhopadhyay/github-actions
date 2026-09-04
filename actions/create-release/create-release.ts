@@ -119,11 +119,7 @@ export function validateGeneratedNotes(value: unknown): GeneratedNotes {
   if (!isSafeLine(value.description, 1_200)) {
     throw new Error('release description is invalid');
   }
-  if (
-    !Array.isArray(value.highlights) ||
-    value.highlights.length < 1 ||
-    value.highlights.length > 6
-  ) {
+  if (!Array.isArray(value.highlights) || value.highlights.length < 1 || value.highlights.length > 6) {
     throw new Error('release highlights are invalid');
   }
   if (!value.highlights.every((highlight) => isSafeLine(highlight, 240))) {
@@ -195,8 +191,7 @@ export function validateReleaseFacts(value: unknown): ReleaseFacts {
   if (
     (value.previousTag === null && value.previousObject !== null) ||
     (value.previousTag !== null &&
-      (typeof value.previousObject !== 'string' ||
-        !/^[0-9a-f]{40,64}$/iu.test(value.previousObject)))
+      (typeof value.previousObject !== 'string' || !/^[0-9a-f]{40,64}$/iu.test(value.previousObject)))
   ) {
     throw new Error('invalid previous tag object in release facts');
   }
@@ -263,9 +258,7 @@ export function renderReleaseBody(notes: GeneratedNotes, facts: ReleaseFacts): s
   } else {
     for (const commit of facts.commits) {
       const commitUrl = `${facts.serverUrl}/${facts.repository}/commit/${commit.sha}`;
-      lines.push(
-        `- [\`${commit.sha.slice(0, 7)}\`](${commitUrl}) ${markdownEscape(commit.subject)}`,
-      );
+      lines.push(`- [\`${commit.sha.slice(0, 7)}\`](${commitUrl}) ${markdownEscape(commit.subject)}`);
     }
   }
 
@@ -312,11 +305,7 @@ function extractOutputText(response: unknown): string {
     throw new Error('OpenAI response does not contain exactly one text result');
   }
   const outputText = message.content[0];
-  if (
-    !isRecord(outputText) ||
-    outputText.type !== 'output_text' ||
-    typeof outputText.text !== 'string'
-  ) {
+  if (!isRecord(outputText) || outputText.type !== 'output_text' || typeof outputText.text !== 'string') {
     throw new Error('OpenAI response does not contain exactly one text result');
   }
   return outputText.text;
@@ -329,8 +318,7 @@ export async function generateNotes(
     const client = new OpenAI({ apiKey: key });
     return {
       responses: {
-        create: (request) =>
-          client.responses.create(request as Parameters<typeof client.responses.create>[0]),
+        create: (request) => client.responses.create(request as Parameters<typeof client.responses.create>[0]),
       },
     };
   },
@@ -358,18 +346,13 @@ export async function generateNotes(
   try {
     parsed = JSON.parse(extractOutputText(response));
   } catch (error) {
-    if (error instanceof SyntaxError)
-      throw new Error('OpenAI returned invalid JSON', { cause: error });
+    if (error instanceof SyntaxError) throw new Error('OpenAI returned invalid JSON', { cause: error });
     throw error;
   }
   return validateGeneratedNotes(parsed);
 }
 
-async function checkedInputFile(
-  path: string,
-  runnerTemp: string,
-  maximumBytes: number,
-): Promise<string> {
+async function checkedInputFile(path: string, runnerTemp: string, maximumBytes: number): Promise<string> {
   const inputStats = await lstat(path);
   if (!inputStats.isFile() || inputStats.isSymbolicLink()) {
     throw new Error('release handoff file must be a regular non-symbolic file');
@@ -404,11 +387,7 @@ export async function run(clientFactory?: ClientFactory): Promise<void> {
     const canonicalRunnerTemp = await realpath(runnerTemp);
     const bodyPath = resolve(bodyInput);
     const bodyFromRunnerTemp = relative(canonicalRunnerTemp, bodyPath);
-    if (
-      bodyFromRunnerTemp === '' ||
-      bodyFromRunnerTemp.startsWith('..') ||
-      dirname(bodyPath) !== dirname(factsPath)
-    ) {
+    if (bodyFromRunnerTemp === '' || bodyFromRunnerTemp.startsWith('..') || dirname(bodyPath) !== dirname(factsPath)) {
       throw new Error('body-file must be a new file in the release session directory');
     }
 
@@ -426,8 +405,7 @@ export async function run(clientFactory?: ClientFactory): Promise<void> {
   }
 }
 
-const executedPath =
-  process.argv[1] === undefined ? undefined : pathToFileURL(resolve(process.argv[1])).href;
+const executedPath = process.argv[1] === undefined ? undefined : pathToFileURL(resolve(process.argv[1])).href;
 if (executedPath === import.meta.url) {
   await run();
 }

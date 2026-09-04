@@ -81,9 +81,7 @@ function inputSchema(input: ActionInput): Record<string, unknown> {
 
 function actionCondition(action: ConsumerAction): Record<string, unknown> {
   const inputs = action.metadata.inputs ?? {};
-  const properties = Object.fromEntries(
-    Object.entries(inputs).map(([name, input]) => [name, inputSchema(input)]),
-  );
+  const properties = Object.fromEntries(Object.entries(inputs).map(([name, input]) => [name, inputSchema(input)]));
   const callerRequired = Object.entries(inputs)
     .filter(([, input]) => input.required === true && !hasOwn(input, 'default'))
     .map(([name]) => name);
@@ -152,16 +150,9 @@ export async function generateActionSchema(root = repositoryRoot()): Promise<voi
   const actions = await readConsumerActions(root);
   const schema = buildSchema(actions);
   const destination = path.join(root, 'schemas', 'action-inputs.schema.json');
-  await writeFile(
-    destination,
-    await format(JSON.stringify(schema), { parser: 'json', printWidth: 100 }),
-    'utf8',
-  );
+  await writeFile(destination, await format(JSON.stringify(schema), { parser: 'json', printWidth: 100 }), 'utf8');
 }
 
-if (
-  process.argv[1] !== undefined &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   void generateActionSchema();
 }

@@ -1,22 +1,11 @@
 import assert from 'node:assert/strict';
-import {
-  mkdtempSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test, type TestContext } from 'node:test';
 import * as ts from 'typescript';
 import { incrementVersion, mutateVersions } from '../actions/bump-version/bump-version.ts';
-import {
-  matchChangedFiles,
-  parseChangedPaths,
-} from '../actions/is-file-changed/is-file-changed.ts';
+import { matchChangedFiles, parseChangedPaths } from '../actions/is-file-changed/is-file-changed.ts';
 import { checkVersion, readCanonicalVersion } from '../check-version/check-version.ts';
 
 const temporaryDirectories: string[] = [];
@@ -33,11 +22,7 @@ function temporaryDirectory(): string {
   return directory;
 }
 
-function writeChart(
-  repository: string,
-  applicationVersion = '1.2.3',
-  chartVersion = '0.4.0',
-): void {
+function writeChart(repository: string, applicationVersion = '1.2.3', chartVersion = '0.4.0'): void {
   mkdirSync(join(repository, 'charts'), { recursive: true });
   writeFileSync(join(repository, 'VERSION'), `${applicationVersion}\n`);
   writeFileSync(join(repository, 'charts', 'VERSION'), `${chartVersion}\n`);
@@ -71,9 +56,7 @@ function collectTypeScriptFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
-      return entry.name === 'dist' || entry.name === 'node_modules'
-        ? []
-        : collectTypeScriptFiles(path);
+      return entry.name === 'dist' || entry.name === 'node_modules' ? [] : collectTypeScriptFiles(path);
     }
     return entry.isFile() && entry.name.endsWith('.ts') ? [path] : [];
   });
@@ -151,10 +134,7 @@ void test('check-version rejects noncanonical, multiline, escaping, and mismatch
   );
 
   writeFileSync(join(repository, 'VERSION'), '1.2.3\n\n');
-  assert.throws(
-    () => readCanonicalVersion(join(repository, 'VERSION'), 'application version'),
-    /exactly one line/,
-  );
+  assert.throws(() => readCanonicalVersion(join(repository, 'VERSION'), 'application version'), /exactly one line/);
   assert.throws(
     () => checkVersion({ workspace: repository, workingDirectory: '..', helm: false }),
     /escapes the checkout/,
@@ -192,10 +172,7 @@ void test('version increments are canonical and do not lose integer precision', 
   assert.equal(incrementVersion('1.2.3', 'minor'), '1.3.0');
   assert.equal(incrementVersion('1.2.3', 'major'), '2.0.0');
   assert.equal(incrementVersion('9007199254740993.0.0', 'major'), '9007199254740994.0.0');
-  assert.throws(
-    () => incrementVersion('1.2.3', 'prerelease'),
-    /increment must be patch, minor, or major/,
-  );
+  assert.throws(() => incrementVersion('1.2.3', 'prerelease'), /increment must be patch, minor, or major/);
 });
 
 void test('bump-version mutates only selected authorities while preserving Chart.yaml formatting', () => {
@@ -235,10 +212,7 @@ void test('bump-version preserves Helm-only, Go-only, and no-target behavior', (
     },
   );
   assert.equal(readFileSync(join(helmOnly, 'VERSION'), 'utf8'), '1.2.3\n');
-  assert.match(
-    readFileSync(join(helmOnly, 'charts', 'Chart.yaml'), 'utf8'),
-    /appVersion: "1\.2\.3"/,
-  );
+  assert.match(readFileSync(join(helmOnly, 'charts', 'Chart.yaml'), 'utf8'), /appVersion: "1\.2\.3"/);
 
   const goOnly = temporaryDirectory();
   writeChart(goOnly);
@@ -294,21 +268,9 @@ void test('bump-version does not write through a symlinked authority file', (con
 });
 
 void test('is-file-changed parses ordinary, rename, and copy records', () => {
-  const contents = Buffer.from(
-    'M\0VERSION\0R100\0old name.txt\0new name.txt\0C100\0source.txt\0copy.txt\0',
-    'utf8',
-  );
-  assert.deepEqual(parseChangedPaths(contents), [
-    'VERSION',
-    'old name.txt',
-    'new name.txt',
-    'source.txt',
-    'copy.txt',
-  ]);
-  assert.throws(
-    () => parseChangedPaths(Buffer.from('R100\0old.txt\0', 'utf8')),
-    /truncated Git rename\/copy record/,
-  );
+  const contents = Buffer.from('M\0VERSION\0R100\0old name.txt\0new name.txt\0C100\0source.txt\0copy.txt\0', 'utf8');
+  assert.deepEqual(parseChangedPaths(contents), ['VERSION', 'old name.txt', 'new name.txt', 'source.txt', 'copy.txt']);
+  assert.throws(() => parseChangedPaths(Buffer.from('R100\0old.txt\0', 'utf8')), /truncated Git rename\/copy record/);
 });
 
 void test('is-file-changed uses JavaScript RegExp against every changed path', () => {
@@ -327,9 +289,6 @@ void test('is-file-changed uses JavaScript RegExp against every changed path', (
   assert.equal(matchChangedFiles('^deleted\\.txt$', changedFiles), true);
   assert.equal(matchChangedFiles('^charts/', changedFiles), false);
   assert.equal(matchChangedFiles('(?<=new )name', changedFiles), true);
-  assert.throws(
-    () => matchChangedFiles('[', changedFiles),
-    /invalid JavaScript regular expression/,
-  );
+  assert.throws(() => matchChangedFiles('[', changedFiles), /invalid JavaScript regular expression/);
   assert.throws(() => matchChangedFiles('', changedFiles), /pattern is required/);
 });

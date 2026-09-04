@@ -19,11 +19,7 @@ function temporaryDirectory(): string {
   return directory;
 }
 
-function writeChart(
-  repository: string,
-  version = '0.4.0',
-  extra = '',
-): { chartDirectory: string; runnerTemp: string } {
+function writeChart(repository: string, version = '0.4.0', extra = ''): { chartDirectory: string; runnerTemp: string } {
   const chartDirectory = join(repository, 'charts');
   const runnerTemp = join(repository, 'runner-temp');
   mkdirSync(chartDirectory, { recursive: true });
@@ -167,10 +163,7 @@ void test('Helm delivery TypeScript never invokes external commands', () => {
 });
 
 void test('container-build-push keeps preparation inline and omits an empty auth token', () => {
-  const metadata = readFileSync(
-    join(import.meta.dirname, '..', 'container-build-push', 'action.yaml'),
-    'utf8',
-  );
+  const metadata = readFileSync(join(import.meta.dirname, '..', 'container-build-push', 'action.yaml'), 'utf8');
   assert.doesNotMatch(metadata, new RegExp(String.raw`prepare\.sh`, 'u'));
   assert.match(metadata, new RegExp(String.raw`secrets: \$\{\{ inputs\.auth-token != ''`, 'u'));
 });

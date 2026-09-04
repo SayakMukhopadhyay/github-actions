@@ -18,13 +18,11 @@ export default tseslint.config(
           paths: [
             {
               name: 'node:child_process',
-              message:
-                'TypeScript must not execute external commands; use a shell boundary instead.',
+              message: 'TypeScript must not execute external commands; use a shell boundary instead.',
             },
             {
               name: 'child_process',
-              message:
-                'TypeScript must not execute external commands; use a shell boundary instead.',
+              message: 'TypeScript must not execute external commands; use a shell boundary instead.',
             },
           ],
         },

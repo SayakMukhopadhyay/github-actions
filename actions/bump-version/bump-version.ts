@@ -59,11 +59,7 @@ function readChart(
   return { source, document };
 }
 
-function chartScalar(
-  document: ReturnType<typeof parseDocument>,
-  file: string,
-  field: string,
-): string {
+function chartScalar(document: ReturnType<typeof parseDocument>, file: string, field: string): string {
   const node: unknown = document.get(field, true);
   if (!isScalar(node) || (typeof node.value !== 'string' && typeof node.value !== 'number')) {
     fail(`${file} must contain exactly one top-level ${field} field`);
@@ -71,11 +67,7 @@ function chartScalar(
   return String(node.value);
 }
 
-function patchChartScalars(
-  file: string,
-  authorityRoot: string,
-  replacements: ReadonlyMap<string, string>,
-): void {
+function patchChartScalars(file: string, authorityRoot: string, replacements: ReadonlyMap<string, string>): void {
   const authorityFile = requireRegularContainedFile(authorityRoot, file, 'chart metadata');
   const { source, document } = readChart(authorityFile, authorityRoot);
   const patches: { start: number; end: number; replacement: string }[] = [];
@@ -119,27 +111,15 @@ export function mutateVersions(options: MutateVersionsOptions): MutationResult {
   }
 
   const { project } = resolveProject(options.workspace, options.workingDirectory);
-  const applicationFile = requireRegularContainedFile(
-    project,
-    resolve(project, 'VERSION'),
-    'application version',
-  );
+  const applicationFile = requireRegularContainedFile(project, resolve(project, 'VERSION'), 'application version');
   const applicationVersion = readCanonicalVersion(applicationFile, 'application version', project);
   let chartVersion = '';
   let chartFile = '';
   let chartVersionFile = '';
 
   if (options.helm) {
-    chartVersionFile = requireRegularContainedFile(
-      project,
-      resolve(project, 'charts', 'VERSION'),
-      'chart version',
-    );
-    chartFile = requireRegularContainedFile(
-      project,
-      resolve(project, 'charts', 'Chart.yaml'),
-      'chart metadata',
-    );
+    chartVersionFile = requireRegularContainedFile(project, resolve(project, 'charts', 'VERSION'), 'chart version');
+    chartFile = requireRegularContainedFile(project, resolve(project, 'charts', 'Chart.yaml'), 'chart metadata');
     chartVersion = readCanonicalVersion(chartVersionFile, 'chart version', project);
     const { document } = readChart(chartFile, project);
     const actualChartVersion = chartScalar(document, chartFile, 'version');
@@ -152,9 +132,7 @@ export function mutateVersions(options: MutateVersionsOptions): MutationResult {
     }
   }
 
-  const newApplicationVersion = options.go
-    ? incrementVersion(applicationVersion, options.increment)
-    : '';
+  const newApplicationVersion = options.go ? incrementVersion(applicationVersion, options.increment) : '';
   const newChartVersion = options.helm ? incrementVersion(chartVersion, options.increment) : '';
 
   if (options.go) {

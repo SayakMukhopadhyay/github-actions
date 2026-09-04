@@ -25,11 +25,7 @@ function isContained(root: string, candidate: string): boolean {
   );
 }
 
-export function requireRegularContainedFile(
-  authorityRoot: string,
-  file: string,
-  label: string,
-): string {
+export function requireRegularContainedFile(authorityRoot: string, file: string, label: string): string {
   const root = realpathSync(authorityRoot);
   let metadata;
   try {
@@ -72,11 +68,7 @@ export function resolveProject(
   return { workspace, project };
 }
 
-export function readCanonicalVersion(
-  file: string,
-  label: string,
-  authorityRoot = dirname(file),
-): string {
+export function readCanonicalVersion(file: string, label: string, authorityRoot = dirname(file)): string {
   const authorityFile = requireRegularContainedFile(authorityRoot, file, label);
   const contents = readFileSync(authorityFile, 'utf8');
   const match = /^([^\r\n]*)(?:\n)?$/.exec(contents);
@@ -120,9 +112,7 @@ export function checkVersion(options: CheckVersionOptions): void {
     const actualApplicationVersion = readYamlScalar(chartFile, 'appVersion', project);
 
     if (actualChartVersion !== chartVersion) {
-      fail(
-        `${chartFile} field version mismatch: expected '${chartVersion}', got '${actualChartVersion}'`,
-      );
+      fail(`${chartFile} field version mismatch: expected '${chartVersion}', got '${actualChartVersion}'`);
     }
     if (actualApplicationVersion !== applicationVersion) {
       fail(

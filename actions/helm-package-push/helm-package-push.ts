@@ -55,11 +55,7 @@ function readCanonicalVersion(file: string): string {
   return version;
 }
 
-function requiredScalar(
-  mapping: ReturnType<typeof parseDocument>,
-  file: string,
-  field: string,
-): string {
+function requiredScalar(mapping: ReturnType<typeof parseDocument>, file: string, field: string): string {
   const node: unknown = mapping.get(field, true);
   if (!isScalar(node) || (typeof node.value !== 'string' && typeof node.value !== 'number')) {
     fail(`could not read ${file} field ${field}`);
