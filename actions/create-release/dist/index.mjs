@@ -15288,11 +15288,34 @@ const INSTRUCTIONS = [
 	"Do not invent facts."
 ].join(" ");
 const unsafeGeneratedText = /https?:\/\/|www\.|\[[^\]]+\]\([^)]*\)|<[^>]+>|`|(^|[^\p{L}\p{N}_])v?\d+\.\d+\.\d+([^\p{L}\p{N}_]|$)|\b[0-9a-f]{7,64}\b|(^|\s)[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.:/-]+|(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu;
+var SafeActionFailure = class extends Error {
+	diagnostic;
+	constructor(diagnostic) {
+		super("create-release failed");
+		this.name = "SafeActionFailure";
+		this.diagnostic = diagnostic;
+	}
+};
+function fail(diagnostic) {
+	throw new SafeActionFailure(diagnostic);
+}
 function getActionInput(name) {
 	const environmentName = `INPUT_${name.replaceAll(" ", "_").toUpperCase()}`;
 	const value = process.env[environmentName]?.trim() ?? "";
-	if (value === "") throw new Error(`${name} is required`);
+	if (value === "") fail({
+		category: "input-validation",
+		reason: "missing-required-input",
+		input: name
+	});
 	return value;
+}
+function formatFailure(error, fallbackCategory) {
+	const diagnostic = error instanceof SafeActionFailure ? error.diagnostic : {
+		category: fallbackCategory,
+		reason: "operation-failed"
+	};
+	const input = "input" in diagnostic ? ` input=${diagnostic.input}` : "";
+	return `create-release: failed: category=${diagnostic.category} reason=${diagnostic.reason}${input}\n`;
 }
 function isRecord(value) {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -15459,31 +15482,79 @@ async function checkedInputFile(path, runnerTemp, maximumBytes) {
 	if (inputStats.size > maximumBytes) throw new Error("release handoff file is invalid or too large");
 	return canonicalPath;
 }
+async function validateInputFile(role, path, runnerTemp, maximumBytes) {
+	try {
+		return await checkedInputFile(path, runnerTemp, maximumBytes);
+	} catch {
+		fail({
+			category: "input-file-validation",
+			reason: role
+		});
+	}
+}
+async function readInputFile(role, path) {
+	try {
+		return await readFile(path, "utf8");
+	} catch {
+		fail({
+			category: "input-file-validation",
+			reason: role
+		});
+	}
+}
 async function run(clientFactory) {
+	let failureCategory = "model-generation";
 	try {
 		const apiKey = getActionInput("openai-api-key");
 		const contextInput = getActionInput("context-file");
 		const factsInput = getActionInput("facts-file");
 		const bodyInput = getActionInput("body-file");
 		const runnerTemp = process.env.RUNNER_TEMP;
-		if (!runnerTemp) throw new Error("RUNNER_TEMP is required");
-		const contextPath = await checkedInputFile(contextInput, runnerTemp, MAX_CONTEXT_BYTES);
-		const factsPath = await checkedInputFile(factsInput, runnerTemp, MAX_FACTS_BYTES);
-		const canonicalRunnerTemp = await realpath(runnerTemp);
-		const bodyPath = resolve(bodyInput);
-		const bodyFromRunnerTemp = relative(canonicalRunnerTemp, bodyPath);
-		if (bodyFromRunnerTemp === "" || bodyFromRunnerTemp.startsWith("..") || dirname(bodyPath) !== dirname(factsPath)) throw new Error("body-file must be a new file in the release session directory");
-		const context = await readFile(contextPath, "utf8");
-		const facts = validateReleaseFacts(JSON.parse(await readFile(factsPath, "utf8")));
-		const body = renderReleaseBody(await generateNotes(context, apiKey, clientFactory), facts);
+		if (!runnerTemp) fail({
+			category: "input-validation",
+			reason: "missing-runner-temp"
+		});
+		const contextPath = await validateInputFile("context-file", contextInput, runnerTemp, MAX_CONTEXT_BYTES);
+		const factsPath = await validateInputFile("facts-file", factsInput, runnerTemp, MAX_FACTS_BYTES);
+		let bodyPath;
+		try {
+			const canonicalRunnerTemp = await realpath(runnerTemp);
+			bodyPath = resolve(bodyInput);
+			const bodyFromRunnerTemp = relative(canonicalRunnerTemp, bodyPath);
+			if (bodyFromRunnerTemp === "" || bodyFromRunnerTemp.startsWith("..") || dirname(bodyPath) !== dirname(factsPath)) fail({
+				category: "input-file-validation",
+				reason: "body-file"
+			});
+		} catch (error) {
+			if (error instanceof SafeActionFailure) throw error;
+			fail({
+				category: "input-file-validation",
+				reason: "body-file"
+			});
+		}
+		const context = await readInputFile("context-file", contextPath);
+		const factsText = await readInputFile("facts-file", factsPath);
+		let facts;
+		try {
+			facts = validateReleaseFacts(JSON.parse(factsText));
+		} catch {
+			fail({
+				category: "release-facts-validation",
+				reason: "invalid-facts"
+			});
+		}
+		const notes = await generateNotes(context, apiKey, clientFactory);
+		failureCategory = "rendering";
+		const body = renderReleaseBody(notes, facts);
 		if (Buffer.byteLength(body, "utf8") > MAX_BODY_BYTES) throw new Error("rendered release body exceeds the maximum size");
+		failureCategory = "output-write";
 		await writeFile(bodyPath, body, {
 			encoding: "utf8",
 			flag: "wx",
 			mode: 384
 		});
-	} catch {
-		process.stderr.write("create-release: release-note generation failed validation\n");
+	} catch (error) {
+		process.stderr.write(formatFailure(error, failureCategory));
 		process.exitCode = 1;
 	}
 }

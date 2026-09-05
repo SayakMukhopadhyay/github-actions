@@ -39,11 +39,59 @@ const INSTRUCTIONS = [
 const unsafeGeneratedText =
   /https?:\/\/|www\.|\[[^\]]+\]\([^)]*\)|<[^>]+>|`|(^|[^\p{L}\p{N}_])v?\d+\.\d+\.\d+([^\p{L}\p{N}_]|$)|\b[0-9a-f]{7,64}\b|(^|\s)[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.:/-]+|(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu;
 
-function getActionInput(name: string): string {
+type RequiredInputName = 'openai-api-key' | 'context-file' | 'facts-file' | 'body-file';
+type InputFileRole = 'context-file' | 'facts-file' | 'body-file';
+type OperationFailureCategory = 'model-generation' | 'rendering' | 'output-write';
+
+type SafeFailureDiagnostic =
+  | {
+      category: 'input-validation';
+      reason: 'missing-required-input';
+      input: RequiredInputName;
+    }
+  | {
+      category: 'input-validation';
+      reason: 'missing-runner-temp';
+    }
+  | {
+      category: 'input-file-validation';
+      reason: InputFileRole;
+    }
+  | {
+      category: 'release-facts-validation';
+      reason: 'invalid-facts';
+    }
+  | {
+      category: OperationFailureCategory;
+      reason: 'operation-failed';
+    };
+
+class SafeActionFailure extends Error {
+  readonly diagnostic: SafeFailureDiagnostic;
+
+  constructor(diagnostic: SafeFailureDiagnostic) {
+    super('create-release failed');
+    this.name = 'SafeActionFailure';
+    this.diagnostic = diagnostic;
+  }
+}
+
+function fail(diagnostic: SafeFailureDiagnostic): never {
+  throw new SafeActionFailure(diagnostic);
+}
+
+function getActionInput(name: RequiredInputName): string {
   const environmentName = `INPUT_${name.replaceAll(' ', '_').toUpperCase()}`;
   const value = process.env[environmentName]?.trim() ?? '';
-  if (value === '') throw new Error(`${name} is required`);
+  if (value === '') fail({ category: 'input-validation', reason: 'missing-required-input', input: name });
   return value;
+}
+
+function formatFailure(error: unknown, fallbackCategory: OperationFailureCategory): string {
+  const diagnostic: SafeFailureDiagnostic =
+    error instanceof SafeActionFailure ? error.diagnostic : { category: fallbackCategory, reason: 'operation-failed' };
+  const input = 'input' in diagnostic ? ` input=${diagnostic.input}` : '';
+  return `create-release: failed: category=${diagnostic.category} reason=${diagnostic.reason}${input}\n`;
 }
 
 export interface ReleaseCommit {
@@ -373,34 +421,75 @@ async function checkedInputFile(path: string, runnerTemp: string, maximumBytes: 
   return canonicalPath;
 }
 
+async function validateInputFile(
+  role: InputFileRole,
+  path: string,
+  runnerTemp: string,
+  maximumBytes: number,
+): Promise<string> {
+  try {
+    return await checkedInputFile(path, runnerTemp, maximumBytes);
+  } catch {
+    fail({ category: 'input-file-validation', reason: role });
+  }
+}
+
+async function readInputFile(role: InputFileRole, path: string): Promise<string> {
+  try {
+    return await readFile(path, 'utf8');
+  } catch {
+    fail({ category: 'input-file-validation', reason: role });
+  }
+}
+
 export async function run(clientFactory?: ClientFactory): Promise<void> {
+  let failureCategory: OperationFailureCategory = 'model-generation';
   try {
     const apiKey = getActionInput('openai-api-key');
     const contextInput = getActionInput('context-file');
     const factsInput = getActionInput('facts-file');
     const bodyInput = getActionInput('body-file');
     const runnerTemp = process.env.RUNNER_TEMP;
-    if (!runnerTemp) throw new Error('RUNNER_TEMP is required');
+    if (!runnerTemp) fail({ category: 'input-validation', reason: 'missing-runner-temp' });
 
-    const contextPath = await checkedInputFile(contextInput, runnerTemp, MAX_CONTEXT_BYTES);
-    const factsPath = await checkedInputFile(factsInput, runnerTemp, MAX_FACTS_BYTES);
-    const canonicalRunnerTemp = await realpath(runnerTemp);
-    const bodyPath = resolve(bodyInput);
-    const bodyFromRunnerTemp = relative(canonicalRunnerTemp, bodyPath);
-    if (bodyFromRunnerTemp === '' || bodyFromRunnerTemp.startsWith('..') || dirname(bodyPath) !== dirname(factsPath)) {
-      throw new Error('body-file must be a new file in the release session directory');
+    const contextPath = await validateInputFile('context-file', contextInput, runnerTemp, MAX_CONTEXT_BYTES);
+    const factsPath = await validateInputFile('facts-file', factsInput, runnerTemp, MAX_FACTS_BYTES);
+    let bodyPath: string;
+    try {
+      const canonicalRunnerTemp = await realpath(runnerTemp);
+      bodyPath = resolve(bodyInput);
+      const bodyFromRunnerTemp = relative(canonicalRunnerTemp, bodyPath);
+      if (
+        bodyFromRunnerTemp === '' ||
+        bodyFromRunnerTemp.startsWith('..') ||
+        dirname(bodyPath) !== dirname(factsPath)
+      ) {
+        fail({ category: 'input-file-validation', reason: 'body-file' });
+      }
+    } catch (error) {
+      if (error instanceof SafeActionFailure) throw error;
+      fail({ category: 'input-file-validation', reason: 'body-file' });
     }
 
-    const context = await readFile(contextPath, 'utf8');
-    const facts = validateReleaseFacts(JSON.parse(await readFile(factsPath, 'utf8')));
+    const context = await readInputFile('context-file', contextPath);
+    const factsText = await readInputFile('facts-file', factsPath);
+    let facts: ReleaseFacts;
+    try {
+      facts = validateReleaseFacts(JSON.parse(factsText));
+    } catch {
+      fail({ category: 'release-facts-validation', reason: 'invalid-facts' });
+    }
+
     const notes = await generateNotes(context, apiKey, clientFactory);
+    failureCategory = 'rendering';
     const body = renderReleaseBody(notes, facts);
     if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
       throw new Error('rendered release body exceeds the maximum size');
     }
+    failureCategory = 'output-write';
     await writeFile(bodyPath, body, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
-  } catch {
-    process.stderr.write('create-release: release-note generation failed validation\n');
+  } catch (error) {
+    process.stderr.write(formatFailure(error, failureCategory));
     process.exitCode = 1;
   }
 }

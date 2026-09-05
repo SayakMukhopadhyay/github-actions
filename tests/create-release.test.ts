@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import {
   generateNotes,
   renderReleaseBody,
+  run,
   validateGeneratedNotes,
   validateReleaseFacts,
   type ReleaseFacts,
@@ -42,6 +45,232 @@ function completedResponse(text: string): unknown {
     ],
   };
 }
+
+const releaseInputNames = ['openai-api-key', 'context-file', 'facts-file', 'body-file'] as const;
+type ReleaseInputName = (typeof releaseInputNames)[number];
+
+interface RunOptions {
+  bodyInput?: string;
+  contextInput?: string;
+  factsContent?: string;
+  factsInput?: string;
+  modelError?: Error;
+  omitInput?: ReleaseInputName;
+  precreateBody?: boolean;
+  unsetRunnerTemp?: boolean;
+}
+
+interface RunResult {
+  body: string | undefined;
+  clientCreated: boolean;
+  exitCode: number | string | null | undefined;
+  observedKey: string;
+  runnerTemp: string;
+  stderr: string;
+}
+
+function inputEnvironmentName(name: ReleaseInputName): string {
+  return `INPUT_${name.toUpperCase()}`;
+}
+
+async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
+  const runnerTemp = await mkdtemp(join(tmpdir(), 'create-release-diagnostics-'));
+  const sessionDirectory = join(runnerTemp, 'release-session');
+  const contextPath = join(sessionDirectory, 'context.txt');
+  const factsPath = join(sessionDirectory, 'facts.json');
+  const bodyPath = join(sessionDirectory, 'body.md');
+  const environmentNames = [...releaseInputNames.map(inputEnvironmentName), 'RUNNER_TEMP'];
+  const previousEnvironment = new Map(environmentNames.map((name) => [name, process.env[name]]));
+  const previousExitCode = process.exitCode;
+  const originalStderrWrite = process.stderr.write.bind(process.stderr);
+  let clientCreated = false;
+  let observedKey = '';
+  let stderr = '';
+
+  try {
+    await mkdir(sessionDirectory);
+    await writeFile(contextPath, 'untrusted-context-secret-value', 'utf8');
+    await writeFile(factsPath, options.factsContent ?? JSON.stringify(facts), 'utf8');
+    if (options.precreateBody) await writeFile(bodyPath, 'untrusted-existing-body-value', 'utf8');
+
+    for (const name of environmentNames) delete process.env[name];
+    const inputValues: Record<ReleaseInputName, string> = {
+      'openai-api-key': 'openai-secret-value',
+      'context-file': options.contextInput ?? contextPath,
+      'facts-file': options.factsInput ?? factsPath,
+      'body-file': options.bodyInput ?? bodyPath,
+    };
+    for (const name of releaseInputNames) {
+      if (name !== options.omitInput) process.env[inputEnvironmentName(name)] = inputValues[name];
+    }
+    if (!options.unsetRunnerTemp) process.env.RUNNER_TEMP = runnerTemp;
+
+    process.exitCode = undefined;
+    process.stderr.write = (chunk: string | Uint8Array) => {
+      stderr += chunk.toString();
+      return true;
+    };
+
+    await run((apiKey) => {
+      clientCreated = true;
+      observedKey = apiKey;
+      return {
+        responses: {
+          create: () => {
+            if (options.modelError) return Promise.reject(options.modelError);
+            return Promise.resolve(
+              completedResponse(
+                JSON.stringify({
+                  description: 'This release improves delivery reliability.',
+                  highlights: ['Handles important release paths safely'],
+                }),
+              ),
+            );
+          },
+        },
+      };
+    });
+
+    return {
+      body: process.exitCode === undefined ? await readFile(bodyPath, 'utf8') : undefined,
+      clientCreated,
+      exitCode: process.exitCode,
+      observedKey,
+      runnerTemp,
+      stderr,
+    };
+  } finally {
+    process.stderr.write = originalStderrWrite;
+    for (const [name, value] of previousEnvironment) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    process.exitCode = previousExitCode;
+    await rm(runnerTemp, { recursive: true, force: true });
+  }
+}
+
+function assertRedacted(result: RunResult): void {
+  assert.doesNotMatch(result.stderr, /openai-secret-value|untrusted|release-session|diagnostics-/u);
+  assert.ok(!result.stderr.includes(result.runnerTemp));
+}
+
+void test('run reports safe diagnostics without changing action input lookup or exposing values', async (context) => {
+  await context.test('the existing hyphenated input environment names reach generation', async () => {
+    const result = await exerciseRun();
+
+    assert.equal(result.exitCode, undefined);
+    assert.equal(result.stderr, '');
+    assert.equal(result.observedKey, 'openai-secret-value');
+    assert.match(result.body ?? '', /^This release improves delivery reliability\./u);
+  });
+
+  for (const input of releaseInputNames) {
+    await context.test(`a missing ${input} input reports only its fixed label`, async () => {
+      const result = await exerciseRun({ omitInput: input });
+
+      assert.equal(result.clientCreated, false);
+      assert.equal(result.exitCode, 1);
+      assert.equal(
+        result.stderr,
+        `create-release: failed: category=input-validation reason=missing-required-input input=${input}\n`,
+      );
+      assertRedacted(result);
+    });
+  }
+
+  await context.test('missing RUNNER_TEMP has a fixed reason', async () => {
+    const result = await exerciseRun({ unsetRunnerTemp: true });
+
+    assert.equal(result.clientCreated, false);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.stderr, 'create-release: failed: category=input-validation reason=missing-runner-temp\n');
+    assertRedacted(result);
+  });
+
+  await context.test('context path validation reports only the file role', async () => {
+    const result = await exerciseRun({
+      contextInput: join(tmpdir(), 'untrusted-context-secret-value-does-not-exist'),
+    });
+
+    assert.equal(result.clientCreated, false);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.stderr, 'create-release: failed: category=input-file-validation reason=context-file\n');
+    assertRedacted(result);
+  });
+
+  await context.test('facts path validation reports only the file role', async () => {
+    const result = await exerciseRun({
+      factsInput: join(tmpdir(), 'untrusted-facts-secret-value-does-not-exist'),
+    });
+
+    assert.equal(result.clientCreated, false);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.stderr, 'create-release: failed: category=input-file-validation reason=facts-file\n');
+    assertRedacted(result);
+  });
+
+  await context.test('body path validation reports only the file role', async () => {
+    const result = await exerciseRun({
+      bodyInput: join(tmpdir(), 'untrusted-body-secret-value.md'),
+    });
+
+    assert.equal(result.clientCreated, false);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.stderr, 'create-release: failed: category=input-file-validation reason=body-file\n');
+    assertRedacted(result);
+  });
+
+  await context.test('malformed release facts have one fixed safe reason', async () => {
+    const result = await exerciseRun({ factsContent: '{"untrusted-facts-secret-value":' });
+
+    assert.equal(result.clientCreated, false);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.stderr, 'create-release: failed: category=release-facts-validation reason=invalid-facts\n');
+    assertRedacted(result);
+  });
+
+  await context.test('structurally invalid release facts have the same fixed safe reason', async () => {
+    const result = await exerciseRun({
+      factsContent: JSON.stringify({ ...facts, repository: 'untrusted-facts-secret-value' }),
+    });
+
+    assert.equal(result.clientCreated, false);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.stderr, 'create-release: failed: category=release-facts-validation reason=invalid-facts\n');
+    assertRedacted(result);
+  });
+
+  await context.test('model failures expose neither the operation error nor supplied content', async () => {
+    const result = await exerciseRun({
+      modelError: new Error('openai-secret-value untrusted-context-secret-value model-output-secret-value'),
+    });
+
+    assert.equal(result.clientCreated, true);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.stderr, 'create-release: failed: category=model-generation reason=operation-failed\n');
+    assertRedacted(result);
+    assert.doesNotMatch(result.stderr, /model-output-secret-value/u);
+  });
+
+  await context.test('rendering failures expose only their operation category', async () => {
+    const result = await exerciseRun({ factsContent: JSON.stringify({ ...facts, tagName: '\ud800' }) });
+
+    assert.equal(result.clientCreated, true);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.stderr, 'create-release: failed: category=rendering reason=operation-failed\n');
+    assertRedacted(result);
+  });
+
+  await context.test('output write failures expose only their operation category', async () => {
+    const result = await exerciseRun({ precreateBody: true });
+
+    assert.equal(result.clientCreated, true);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.stderr, 'create-release: failed: category=output-write reason=operation-failed\n');
+    assertRedacted(result);
+  });
+});
 
 void test('the OpenAI request is fixed, stateless, tool-free, bounded, and schema constrained', async () => {
   let observedKey = '';
