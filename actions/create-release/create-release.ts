@@ -36,55 +36,11 @@ const INSTRUCTIONS = [
   'Do not invent facts.',
 ].join(' ');
 
-export type GeneratedNotesValidationReason =
-  | 'response-shape'
-  | 'description-format'
-  | 'highlight-count'
-  | 'highlight-format'
-  | 'url'
-  | 'markdown'
-  | 'version'
-  | 'commit-id'
-  | 'package-or-mention'
-  | 'repository-path-or-coordinate';
-
-export type ActionFailureCategory =
-  'input-validation' | 'release-facts-validation' | 'model-generation' | 'rendering' | 'output-write';
-
-class GeneratedNotesValidationError extends Error {
-  readonly reason: GeneratedNotesValidationReason;
-
-  constructor(reason: GeneratedNotesValidationReason) {
-    super('generated release notes failed validation');
-    this.name = 'GeneratedNotesValidationError';
-    this.reason = reason;
-  }
-}
-
-const disallowedGeneratedTextRules: readonly {
-  reason: GeneratedNotesValidationReason;
-  pattern: RegExp;
-}[] = [
-  { reason: 'url', pattern: /https?:\/\/|www\./iu },
-  { reason: 'markdown', pattern: /\[[^\]]+\]\([^)]*\)|<[^>]+>|`/u },
-  {
-    reason: 'version',
-    pattern: /(^|[^\p{L}\p{N}_])v?\d+\.\d+\.\d+([^\p{L}\p{N}_]|$)/iu,
-  },
-  { reason: 'commit-id', pattern: /\b[0-9a-f]{7,64}\b/iu },
-  { reason: 'package-or-mention', pattern: /(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu },
-];
-
-const slashSeparatedToken = /[\p{L}\p{N}_.:@~-]+(?:[\\/][\p{L}\p{N}_.:@~-]+)+/gu;
-// Slash compounds are syntactically path-like, so keep this exact prose allowlist deliberately narrow.
-const allowedSlashSeparatedProse = new Set(['CI/CD']);
+const unsafeGeneratedText =
+  /https?:\/\/|www\.|\[[^\]]+\]\([^)]*\)|<[^>]+>|`|(^|[^\p{L}\p{N}_])v?\d+\.\d+\.\d+([^\p{L}\p{N}_]|$)|\b[0-9a-f]{7,64}\b|(^|\s)[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.:/-]+|(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu;
 
 function getActionInput(name: string): string {
-  const canonicalEnvironmentName = `INPUT_${name.replaceAll(' ', '_').toUpperCase()}`;
-  const aliasEnvironmentName = `INPUT_${name.replaceAll(/[- ]/gu, '_').toUpperCase()}`;
-  const environmentName = Object.hasOwn(process.env, canonicalEnvironmentName)
-    ? canonicalEnvironmentName
-    : aliasEnvironmentName;
+  const environmentName = `INPUT_${name.replaceAll(' ', '_').toUpperCase()}`;
   const value = process.env[environmentName]?.trim() ?? '';
   if (value === '') throw new Error(`${name} is required`);
   return value;
@@ -155,53 +111,27 @@ function assertExactKeys(value: Record<string, unknown>, expected: string[]): vo
   }
 }
 
-function generatedNotesValidationError(reason: GeneratedNotesValidationReason): never {
-  throw new GeneratedNotesValidationError(reason);
-}
-
-function validateGeneratedText(generatedText: string): void {
-  for (const rule of disallowedGeneratedTextRules) {
-    if (rule.pattern.test(generatedText)) generatedNotesValidationError(rule.reason);
-  }
-
-  for (const match of generatedText.matchAll(slashSeparatedToken)) {
-    const token = match[0].replace(/[.,;:!?]+$/u, '');
-    if (!allowedSlashSeparatedProse.has(token)) {
-      generatedNotesValidationError('repository-path-or-coordinate');
-    }
-  }
-}
-
 export function validateGeneratedNotes(value: unknown): GeneratedNotes {
   if (!isRecord(value)) {
-    generatedNotesValidationError('response-shape');
+    throw new Error('release notes must be an object');
   }
-  try {
-    assertExactKeys(value, ['description', 'highlights']);
-  } catch {
-    generatedNotesValidationError('response-shape');
-  }
+  assertExactKeys(value, ['description', 'highlights']);
   if (!isSafeLine(value.description, 1_200)) {
-    generatedNotesValidationError('description-format');
+    throw new Error('release description is invalid');
   }
   if (!Array.isArray(value.highlights) || value.highlights.length < 1 || value.highlights.length > 6) {
-    generatedNotesValidationError('highlight-count');
+    throw new Error('release highlights are invalid');
   }
   if (!value.highlights.every((highlight) => isSafeLine(highlight, 240))) {
-    generatedNotesValidationError('highlight-format');
+    throw new Error('release highlight is invalid');
   }
 
   const generatedText = [value.description, ...value.highlights].join('\n');
-  validateGeneratedText(generatedText);
+  if (unsafeGeneratedText.test(generatedText)) {
+    throw new Error('release notes contain disallowed non-descriptive content');
+  }
 
   return { description: value.description, highlights: value.highlights };
-}
-
-export function formatActionFailure(error: unknown, fallbackCategory: ActionFailureCategory): string {
-  if (error instanceof GeneratedNotesValidationError) {
-    return `create-release: failed: category=generated-content-validation reason=${error.reason}\n`;
-  }
-  return `create-release: failed: category=${fallbackCategory} reason=operation-failed\n`;
 }
 
 export function validateReleaseFacts(value: unknown): ReleaseFacts {
@@ -444,7 +374,6 @@ async function checkedInputFile(path: string, runnerTemp: string, maximumBytes: 
 }
 
 export async function run(clientFactory?: ClientFactory): Promise<void> {
-  let failureCategory: ActionFailureCategory = 'input-validation';
   try {
     const apiKey = getActionInput('openai-api-key');
     const contextInput = getActionInput('context-file');
@@ -463,19 +392,15 @@ export async function run(clientFactory?: ClientFactory): Promise<void> {
     }
 
     const context = await readFile(contextPath, 'utf8');
-    failureCategory = 'release-facts-validation';
     const facts = validateReleaseFacts(JSON.parse(await readFile(factsPath, 'utf8')));
-    failureCategory = 'model-generation';
     const notes = await generateNotes(context, apiKey, clientFactory);
-    failureCategory = 'rendering';
     const body = renderReleaseBody(notes, facts);
     if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
       throw new Error('rendered release body exceeds the maximum size');
     }
-    failureCategory = 'output-write';
     await writeFile(bodyPath, body, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
-  } catch (error) {
-    process.stderr.write(formatActionFailure(error, failureCategory));
+  } catch {
+    process.stderr.write('create-release: release-note generation failed validation\n');
     process.exitCode = 1;
   }
 }

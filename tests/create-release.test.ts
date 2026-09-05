@@ -1,13 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import {
-  formatActionFailure,
   generateNotes,
   renderReleaseBody,
-  run,
   validateGeneratedNotes,
   validateReleaseFacts,
   type ReleaseFacts,
@@ -46,136 +42,6 @@ function completedResponse(text: string): unknown {
     ],
   };
 }
-
-const releaseInputNames = ['openai-api-key', 'context-file', 'facts-file', 'body-file'] as const;
-
-function inputEnvironmentName(name: (typeof releaseInputNames)[number], useAlias: boolean): string {
-  const normalizedName = useAlias ? name.replaceAll('-', '_') : name;
-  return `INPUT_${normalizedName.toUpperCase()}`;
-}
-
-async function exerciseRunInputLookup(options: { canonicalKey?: string; aliasKey?: string }): Promise<{
-  body: string | undefined;
-  clientCreated: boolean;
-  exitCode: number | string | null | undefined;
-  observedKey: string;
-  stderr: string;
-}> {
-  const runnerTemp = await mkdtemp(join(tmpdir(), 'create-release-inputs-'));
-  const sessionDirectory = join(runnerTemp, 'release-session');
-  const contextPath = join(sessionDirectory, 'context.txt');
-  const factsPath = join(sessionDirectory, 'facts.json');
-  const bodyPath = join(sessionDirectory, 'body.md');
-  const environmentNames = [
-    ...releaseInputNames.flatMap((name) => [inputEnvironmentName(name, false), inputEnvironmentName(name, true)]),
-    'RUNNER_TEMP',
-  ];
-  const previousEnvironment = new Map(environmentNames.map((name) => [name, process.env[name]]));
-  const previousExitCode = process.exitCode;
-  const originalStderrWrite = process.stderr.write.bind(process.stderr);
-  let clientCreated = false;
-  let observedKey = '';
-  let stderr = '';
-
-  try {
-    await mkdir(sessionDirectory);
-    await writeFile(contextPath, 'bounded untrusted context', 'utf8');
-    await writeFile(factsPath, JSON.stringify(facts), 'utf8');
-    for (const name of environmentNames) delete process.env[name];
-
-    const inputValues = new Map([
-      ['context-file', contextPath],
-      ['facts-file', factsPath],
-      ['body-file', bodyPath],
-    ]);
-    for (const [useAlias, apiKey] of [
-      [false, options.canonicalKey],
-      [true, options.aliasKey],
-    ] as const) {
-      if (apiKey === undefined) continue;
-      process.env[inputEnvironmentName('openai-api-key', useAlias)] = apiKey;
-      for (const [name, value] of inputValues) {
-        process.env[inputEnvironmentName(name as 'context-file' | 'facts-file' | 'body-file', useAlias)] = value;
-      }
-    }
-    process.env.RUNNER_TEMP = runnerTemp;
-    process.exitCode = undefined;
-    process.stderr.write = (chunk: string | Uint8Array) => {
-      stderr += chunk.toString();
-      return true;
-    };
-
-    await run((apiKey) => {
-      clientCreated = true;
-      observedKey = apiKey;
-      return {
-        responses: {
-          create: () =>
-            Promise.resolve(
-              completedResponse(
-                JSON.stringify({
-                  description: 'This release improves input compatibility.',
-                  highlights: ['Handles action input environment names safely'],
-                }),
-              ),
-            ),
-        },
-      };
-    });
-
-    return {
-      body: process.exitCode === undefined ? await readFile(bodyPath, 'utf8') : undefined,
-      clientCreated,
-      exitCode: process.exitCode,
-      observedKey,
-      stderr,
-    };
-  } finally {
-    process.stderr.write = originalStderrWrite;
-    for (const [name, value] of previousEnvironment) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-    process.exitCode = previousExitCode;
-    await rm(runnerTemp, { recursive: true, force: true });
-  }
-}
-
-void test('action input lookup is GitHub-compatible and fails safely', async (context) => {
-  await context.test('canonical GitHub hyphenated inputs reach generation', async () => {
-    const result = await exerciseRunInputLookup({ canonicalKey: 'canonical-openai-secret' });
-
-    assert.equal(result.exitCode, undefined);
-    assert.equal(result.observedKey, 'canonical-openai-secret');
-    assert.match(result.body ?? '', /^This release improves input compatibility\./u);
-  });
-
-  await context.test('underscore aliases remain a compatible fallback', async () => {
-    const result = await exerciseRunInputLookup({ aliasKey: 'alias-openai-secret' });
-
-    assert.equal(result.exitCode, undefined);
-    assert.equal(result.observedKey, 'alias-openai-secret');
-  });
-
-  await context.test('canonical inputs take precedence over underscore aliases', async () => {
-    const result = await exerciseRunInputLookup({
-      canonicalKey: 'canonical-openai-secret',
-      aliasKey: 'alias-openai-secret',
-    });
-
-    assert.equal(result.exitCode, undefined);
-    assert.equal(result.observedKey, 'canonical-openai-secret');
-  });
-
-  await context.test('missing required inputs fail without exposing secret values', async () => {
-    const result = await exerciseRunInputLookup({});
-
-    assert.equal(result.clientCreated, false);
-    assert.equal(result.exitCode, 1);
-    assert.equal(result.stderr, 'create-release: failed: category=input-validation reason=operation-failed\n');
-    assert.doesNotMatch(result.stderr, /openai|secret|key/iu);
-  });
-});
 
 void test('the OpenAI request is fixed, stateless, tool-free, bounded, and schema constrained', async () => {
   let observedKey = '';
@@ -286,17 +152,6 @@ void test('local validation requires exact fields, printable lines, and safe des
     },
   );
 
-  assert.deepEqual(
-    validateGeneratedNotes({
-      description: 'This release improves CI/CD reliability.',
-      highlights: ['Makes CI/CD publishing failures easier to diagnose'],
-    }),
-    {
-      description: 'This release improves CI/CD reliability.',
-      highlights: ['Makes CI/CD publishing failures easier to diagnose'],
-    },
-  );
-
   assert.throws(() =>
     validateGeneratedNotes({
       description: 'A concise release description',
@@ -315,55 +170,6 @@ void test('local validation requires exact fields, printable lines, and safe des
       description: 'A concise release description',
       highlights: ['See Owner/Project for details'],
     }),
-  );
-});
-
-void test('prose exception does not weaken generated-content protections', () => {
-  const disallowedCases = [
-    ['See Owner/Project for details', 'repository-path-or-coordinate'],
-    ['Updates src/release.ts', 'repository-path-or-coordinate'],
-    ['Reads /etc/release-notes', 'repository-path-or-coordinate'],
-    ['Reads C:\\release\\notes', 'repository-path-or-coordinate'],
-    ['Publishes ghcr.io/owner/image:tag', 'repository-path-or-coordinate'],
-    ['Publishes CI/CD/release', 'repository-path-or-coordinate'],
-    ['Publishes ci/cd', 'repository-path-or-coordinate'],
-    ['Uses @scope/package', 'package-or-mention'],
-    ['Read [the notes](release-notes)', 'markdown'],
-    ['Download from https://example.invalid', 'url'],
-    ['Targets v1.2.3', 'version'],
-    ['Includes commit deadbee', 'commit-id'],
-  ] as const;
-
-  for (const [disallowedText, expectedReason] of disallowedCases) {
-    assert.throws(
-      () =>
-        validateGeneratedNotes({
-          description: 'A concise release description',
-          highlights: [disallowedText],
-        }),
-      (error: unknown) => formatActionFailure(error, 'model-generation').includes(`reason=${expectedReason}`),
-    );
-  }
-});
-
-void test('failure logging exposes only safe categories and validation reasons', () => {
-  let validationError: unknown;
-  try {
-    validateGeneratedNotes({
-      description: 'A concise release description',
-      highlights: ['See Owner/Project for details'],
-    });
-  } catch (error) {
-    validationError = error;
-  }
-
-  assert.equal(
-    formatActionFailure(validationError, 'model-generation'),
-    'create-release: failed: category=generated-content-validation reason=repository-path-or-coordinate\n',
-  );
-  assert.equal(
-    formatActionFailure(new Error('untrusted model output and secret values'), 'model-generation'),
-    'create-release: failed: category=model-generation reason=operation-failed\n',
   );
 });
 
