@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import {
+  formatActionFailure,
   generateNotes,
   renderReleaseBody,
   validateGeneratedNotes,
@@ -152,6 +153,17 @@ void test('local validation requires exact fields, printable lines, and safe des
     },
   );
 
+  assert.deepEqual(
+    validateGeneratedNotes({
+      description: 'This release improves CI/CD reliability.',
+      highlights: ['Makes CI/CD publishing failures easier to diagnose'],
+    }),
+    {
+      description: 'This release improves CI/CD reliability.',
+      highlights: ['Makes CI/CD publishing failures easier to diagnose'],
+    },
+  );
+
   assert.throws(() =>
     validateGeneratedNotes({
       description: 'A concise release description',
@@ -170,6 +182,55 @@ void test('local validation requires exact fields, printable lines, and safe des
       description: 'A concise release description',
       highlights: ['See Owner/Project for details'],
     }),
+  );
+});
+
+void test('prose exception does not weaken generated-content protections', () => {
+  const disallowedCases = [
+    ['See Owner/Project for details', 'repository-path-or-coordinate'],
+    ['Updates src/release.ts', 'repository-path-or-coordinate'],
+    ['Reads /etc/release-notes', 'repository-path-or-coordinate'],
+    ['Reads C:\\release\\notes', 'repository-path-or-coordinate'],
+    ['Publishes ghcr.io/owner/image:tag', 'repository-path-or-coordinate'],
+    ['Publishes CI/CD/release', 'repository-path-or-coordinate'],
+    ['Publishes ci/cd', 'repository-path-or-coordinate'],
+    ['Uses @scope/package', 'package-or-mention'],
+    ['Read [the notes](release-notes)', 'markdown'],
+    ['Download from https://example.invalid', 'url'],
+    ['Targets v1.2.3', 'version'],
+    ['Includes commit deadbee', 'commit-id'],
+  ] as const;
+
+  for (const [disallowedText, expectedReason] of disallowedCases) {
+    assert.throws(
+      () =>
+        validateGeneratedNotes({
+          description: 'A concise release description',
+          highlights: [disallowedText],
+        }),
+      (error: unknown) => formatActionFailure(error, 'model-generation').includes(`reason=${expectedReason}`),
+    );
+  }
+});
+
+void test('failure logging exposes only safe categories and validation reasons', () => {
+  let validationError: unknown;
+  try {
+    validateGeneratedNotes({
+      description: 'A concise release description',
+      highlights: ['See Owner/Project for details'],
+    });
+  } catch (error) {
+    validationError = error;
+  }
+
+  assert.equal(
+    formatActionFailure(validationError, 'model-generation'),
+    'create-release: failed: category=generated-content-validation reason=repository-path-or-coordinate\n',
+  );
+  assert.equal(
+    formatActionFailure(new Error('untrusted model output and secret values'), 'model-generation'),
+    'create-release: failed: category=model-generation reason=operation-failed\n',
   );
 });
 

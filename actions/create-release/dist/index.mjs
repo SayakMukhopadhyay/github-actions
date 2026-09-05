@@ -15287,7 +15287,38 @@ const INSTRUCTIONS = [
 	"Do not emit Markdown, URLs, links, tag names, version numbers, commit identifiers, file paths, package or image coordinates, or artifact references.",
 	"Do not invent facts."
 ].join(" ");
-const unsafeGeneratedText = /https?:\/\/|www\.|\[[^\]]+\]\([^)]*\)|<[^>]+>|`|(^|[^\p{L}\p{N}_])v?\d+\.\d+\.\d+([^\p{L}\p{N}_]|$)|\b[0-9a-f]{7,64}\b|(^|\s)[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.:/-]+|(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu;
+var GeneratedNotesValidationError = class extends Error {
+	reason;
+	constructor(reason) {
+		super("generated release notes failed validation");
+		this.name = "GeneratedNotesValidationError";
+		this.reason = reason;
+	}
+};
+const disallowedGeneratedTextRules = [
+	{
+		reason: "url",
+		pattern: /https?:\/\/|www\./iu
+	},
+	{
+		reason: "markdown",
+		pattern: /\[[^\]]+\]\([^)]*\)|<[^>]+>|`/u
+	},
+	{
+		reason: "version",
+		pattern: /(^|[^\p{L}\p{N}_])v?\d+\.\d+\.\d+([^\p{L}\p{N}_]|$)/iu
+	},
+	{
+		reason: "commit-id",
+		pattern: /\b[0-9a-f]{7,64}\b/iu
+	},
+	{
+		reason: "package-or-mention",
+		pattern: /(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu
+	}
+];
+const slashSeparatedToken = /[\p{L}\p{N}_.:@~-]+(?:[\\/][\p{L}\p{N}_.:@~-]+)+/gu;
+const allowedSlashSeparatedProse = /* @__PURE__ */ new Set(["CI/CD"]);
 function getActionInput(name) {
 	const environmentName = `INPUT_${name.replaceAll(" ", "_").toUpperCase()}`;
 	const value = process.env[environmentName]?.trim() ?? "";
@@ -15316,18 +15347,35 @@ function assertExactKeys(value, expected) {
 	const wanted = [...expected].sort();
 	if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) throw new Error("object contains unexpected fields");
 }
+function generatedNotesValidationError(reason) {
+	throw new GeneratedNotesValidationError(reason);
+}
+function validateGeneratedText(generatedText) {
+	for (const rule of disallowedGeneratedTextRules) if (rule.pattern.test(generatedText)) generatedNotesValidationError(rule.reason);
+	for (const match of generatedText.matchAll(slashSeparatedToken)) {
+		const token = match[0].replace(/[.,;:!?]+$/u, "");
+		if (!allowedSlashSeparatedProse.has(token)) generatedNotesValidationError("repository-path-or-coordinate");
+	}
+}
 function validateGeneratedNotes(value) {
-	if (!isRecord(value)) throw new Error("release notes must be an object");
-	assertExactKeys(value, ["description", "highlights"]);
-	if (!isSafeLine(value.description, 1200)) throw new Error("release description is invalid");
-	if (!Array.isArray(value.highlights) || value.highlights.length < 1 || value.highlights.length > 6) throw new Error("release highlights are invalid");
-	if (!value.highlights.every((highlight) => isSafeLine(highlight, 240))) throw new Error("release highlight is invalid");
-	const generatedText = [value.description, ...value.highlights].join("\n");
-	if (unsafeGeneratedText.test(generatedText)) throw new Error("release notes contain disallowed non-descriptive content");
+	if (!isRecord(value)) generatedNotesValidationError("response-shape");
+	try {
+		assertExactKeys(value, ["description", "highlights"]);
+	} catch {
+		generatedNotesValidationError("response-shape");
+	}
+	if (!isSafeLine(value.description, 1200)) generatedNotesValidationError("description-format");
+	if (!Array.isArray(value.highlights) || value.highlights.length < 1 || value.highlights.length > 6) generatedNotesValidationError("highlight-count");
+	if (!value.highlights.every((highlight) => isSafeLine(highlight, 240))) generatedNotesValidationError("highlight-format");
+	validateGeneratedText([value.description, ...value.highlights].join("\n"));
 	return {
 		description: value.description,
 		highlights: value.highlights
 	};
+}
+function formatActionFailure(error, fallbackCategory) {
+	if (error instanceof GeneratedNotesValidationError) return `create-release: failed: category=generated-content-validation reason=${error.reason}\n`;
+	return `create-release: failed: category=${fallbackCategory} reason=operation-failed\n`;
 }
 function validateReleaseFacts(value) {
 	if (!isRecord(value)) throw new Error("release facts must be an object");
@@ -15460,6 +15508,7 @@ async function checkedInputFile(path, runnerTemp, maximumBytes) {
 	return canonicalPath;
 }
 async function run(clientFactory) {
+	let failureCategory = "input-validation";
 	try {
 		const apiKey = getActionInput("openai-api-key");
 		const contextInput = getActionInput("context-file");
@@ -15474,21 +15523,26 @@ async function run(clientFactory) {
 		const bodyFromRunnerTemp = relative(canonicalRunnerTemp, bodyPath);
 		if (bodyFromRunnerTemp === "" || bodyFromRunnerTemp.startsWith("..") || dirname(bodyPath) !== dirname(factsPath)) throw new Error("body-file must be a new file in the release session directory");
 		const context = await readFile(contextPath, "utf8");
+		failureCategory = "release-facts-validation";
 		const facts = validateReleaseFacts(JSON.parse(await readFile(factsPath, "utf8")));
-		const body = renderReleaseBody(await generateNotes(context, apiKey, clientFactory), facts);
+		failureCategory = "model-generation";
+		const notes = await generateNotes(context, apiKey, clientFactory);
+		failureCategory = "rendering";
+		const body = renderReleaseBody(notes, facts);
 		if (Buffer.byteLength(body, "utf8") > MAX_BODY_BYTES) throw new Error("rendered release body exceeds the maximum size");
+		failureCategory = "output-write";
 		await writeFile(bodyPath, body, {
 			encoding: "utf8",
 			flag: "wx",
 			mode: 384
 		});
-	} catch {
-		process.stderr.write("create-release: release-note generation failed validation\n");
+	} catch (error) {
+		process.stderr.write(formatActionFailure(error, failureCategory));
 		process.exitCode = 1;
 	}
 }
 if ((process.argv[1] === void 0 ? void 0 : pathToFileURL(resolve(process.argv[1])).href) === import.meta.url) await run();
 //#endregion
-export { generateNotes, renderReleaseBody, run, validateGeneratedNotes, validateReleaseFacts };
+export { formatActionFailure, generateNotes, renderReleaseBody, run, validateGeneratedNotes, validateReleaseFacts };
 
 //# sourceMappingURL=index.mjs.map
