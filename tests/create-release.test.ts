@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import {
   formatActionFailure,
   generateNotes,
   renderReleaseBody,
+  run,
   validateGeneratedNotes,
   validateReleaseFacts,
   type ReleaseFacts,
@@ -43,6 +46,64 @@ function completedResponse(text: string): unknown {
     ],
   };
 }
+
+void test('GitHub-normalized hyphenated action inputs reach the release-note generator', async () => {
+  const runnerTemp = await mkdtemp(join(tmpdir(), 'create-release-inputs-'));
+  const sessionDirectory = join(runnerTemp, 'release-session');
+  const contextPath = join(sessionDirectory, 'context.txt');
+  const factsPath = join(sessionDirectory, 'facts.json');
+  const bodyPath = join(sessionDirectory, 'body.md');
+  const environmentNames = [
+    'INPUT_OPENAI_API_KEY',
+    'INPUT_CONTEXT_FILE',
+    'INPUT_FACTS_FILE',
+    'INPUT_BODY_FILE',
+    'RUNNER_TEMP',
+  ] as const;
+  const previousEnvironment = new Map(environmentNames.map((name) => [name, process.env[name]]));
+  const previousExitCode = process.exitCode;
+
+  try {
+    await mkdir(sessionDirectory);
+    await writeFile(contextPath, 'bounded untrusted context', 'utf8');
+    await writeFile(factsPath, JSON.stringify(facts), 'utf8');
+    process.env.INPUT_OPENAI_API_KEY = 'openai-secret';
+    process.env.INPUT_CONTEXT_FILE = contextPath;
+    process.env.INPUT_FACTS_FILE = factsPath;
+    process.env.INPUT_BODY_FILE = bodyPath;
+    process.env.RUNNER_TEMP = runnerTemp;
+    process.exitCode = undefined;
+
+    let observedKey = '';
+    await run((apiKey) => {
+      observedKey = apiKey;
+      return {
+        responses: {
+          create: () =>
+            Promise.resolve(
+              completedResponse(
+                JSON.stringify({
+                  description: 'This release improves delivery reliability.',
+                  highlights: ['Handles important release paths more safely'],
+                }),
+              ),
+            ),
+        },
+      };
+    });
+
+    assert.equal(process.exitCode, undefined);
+    assert.equal(observedKey, 'openai-secret');
+    assert.match(await readFile(bodyPath, 'utf8'), /^This release improves delivery reliability\./u);
+  } finally {
+    for (const [name, value] of previousEnvironment) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    process.exitCode = previousExitCode;
+    await rm(runnerTemp, { recursive: true, force: true });
+  }
+});
 
 void test('the OpenAI request is fixed, stateless, tool-free, bounded, and schema constrained', async () => {
   let observedKey = '';

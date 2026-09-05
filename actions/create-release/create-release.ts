@@ -80,7 +80,7 @@ const slashSeparatedToken = /[\p{L}\p{N}_.:@~-]+(?:[\\/][\p{L}\p{N}_.:@~-]+)+/gu
 const allowedSlashSeparatedProse = new Set(['CI/CD']);
 
 function getActionInput(name: string): string {
-  const environmentName = `INPUT_${name.replaceAll(' ', '_').toUpperCase()}`;
+  const environmentName = `INPUT_${name.replaceAll(/[- ]/gu, '_').toUpperCase()}`;
   const value = process.env[environmentName]?.trim() ?? '';
   if (value === '') throw new Error(`${name} is required`);
   return value;
