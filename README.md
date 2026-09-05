@@ -201,7 +201,26 @@ The supplied tag must already exist in the current GitHub repository. The pinned
 
 The semantic-version suffix determines the release family. For example, `v0.0.1`, `chart-v0.0.1`, and `charts/0.0.1` compare only with lower versions sharing their exact respective prefixes. The first release in a family links to its tagged source instead of emitting an invalid comparison. Git supplies the exact first-parent commit list, commit URLs, and comparison/source URL; merge commits appear as mainline entries while their individual branch commits do not.
 
-The action sends bounded commit subjects, changed-file statistics, and a size-limited diff to the OpenAI Responses API as explicitly untrusted repository data. It pins `gpt-5.6-luna`, disables storage, supplies no tools, requests a strict JSON schema, and validates the returned plain-text description and highlights before composing Markdown. OpenAI never supplies tags, versions, commit entries, artifact references, or links. An unavailable, refused, incomplete, malformed, or unsafe AI response fails before GitHub Release creation.
+Optional `pathspecs` scopes release context with newline-delimited native Git pathspecs. Every non-empty line is passed unchanged as one argument after Git's `--` separator; a trailing newline and CRLF input are accepted, while an internal empty line, the special `:` no-pathspec sentinel, or invalid pathspec magic fails closed. Omitting `pathspecs` or passing an empty value preserves the unscoped behavior above.
+
+For GOLFS, chart releases can include only the chart tree:
+
+```yaml
+pathspecs: |
+  :(top,glob)charts/**
+```
+
+Application releases can start with the complete repository and exclude that tree:
+
+```yaml
+pathspecs: |
+  :(top,glob)**
+  :(top,glob,exclude)charts/**
+```
+
+The same pathspec array selects first-parent commits in the release range and filters the changed-file statistics and patch collected for each selected commit. A commit that changes both application and chart files is therefore eligible for both releases, but each invocation exposes only its matching file evidence to the model.
+
+The action sends bounded selected commit subjects, scoped per-commit changed-file statistics, and scoped size-limited patches to the OpenAI Responses API as explicitly untrusted repository data. It pins `gpt-5.6-luna`, disables storage, supplies no tools, requests a strict JSON schema, and validates the returned plain-text description and highlights before composing Markdown. OpenAI never supplies tags, versions, commit entries, artifact references, or links. An unavailable, refused, incomplete, malformed, or unsafe AI response fails before GitHub Release creation.
 
 Outputs are `release-id`, `html-url`, and `upload-url`, corresponding to the useful ID, HTML URL, and upload URL values exposed by the legacy action.
 

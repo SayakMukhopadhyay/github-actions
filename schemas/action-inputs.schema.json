@@ -291,6 +291,11 @@
                           "openai-api-key": {
                             "type": ["string", "number", "boolean"],
                             "description": "OpenAI API key used only to generate the release description"
+                          },
+                          "pathspecs": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional newline-delimited native Git pathspecs used to scope commits and file evidence",
+                            "default": ""
                           }
                         },
                         "additionalProperties": false,

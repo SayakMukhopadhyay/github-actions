@@ -303,6 +303,7 @@ void test('the OpenAI request is fixed, stateless, tool-free, bounded, and schem
   assert.deepEqual(observedRequest?.tools, []);
   assert.deepEqual(observedRequest?.reasoning, { effort: 'none' });
   assert.equal(observedRequest?.max_output_tokens, 800);
+  assert.match(String(observedRequest?.instructions), /mixed commits.*files absent from that evidence/u);
   assert.deepEqual((observedRequest?.text as Record<string, unknown>).format, {
     type: 'json_schema',
     name: 'release_description',
@@ -492,6 +493,7 @@ void test('consumer composite scopes GitHub and OpenAI credentials to different 
   const cleanupStep = metadata.slice(metadata.indexOf('- name: Clean up release session'));
 
   assert.doesNotMatch(contextStep, /inputs\.(?:token|openai-api-key)/u);
+  assert.match(contextStep, /INPUT_PATHSPECS: \$\{\{ inputs\.pathspecs \}\}/u);
   assert.match(preflightStep, /inputs\.token/u);
   assert.doesNotMatch(preflightStep, /inputs\.openai-api-key/u);
   assert.match(generatorStep, /inputs\.openai-api-key/u);

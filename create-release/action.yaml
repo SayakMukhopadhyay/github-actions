@@ -13,6 +13,10 @@ inputs:
   openai-api-key:
     description: OpenAI API key used only to generate the release description
     required: true
+  pathspecs:
+    description: Optional newline-delimited native Git pathspecs used to scope commits and file evidence
+    required: false
+    default: ''
 outputs:
   release-id:
     description: Numeric identifier of the GitHub Release
@@ -40,6 +44,7 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
+        INPUT_PATHSPECS: ${{ inputs.pathspecs }}
         INPUT_TAG_NAME: ${{ inputs.tag-name }}
         TARGET_REPOSITORY: ${{ github.repository }}
         TARGET_SERVER_URL: ${{ github.server_url }}

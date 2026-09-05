@@ -53,6 +53,7 @@ void test('accepts valid inputs for each documented consumer action', async () =
         'tag-name': 'v1.2.3',
         'release-name': 'v1.2.3',
         'openai-api-key': '${{ secrets.OPENAI_API_KEY }}',
+        pathspecs: ':(top,glob)**\n:(top,glob,exclude)charts/**',
       },
     ],
     [

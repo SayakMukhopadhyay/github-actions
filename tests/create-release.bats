@@ -44,9 +44,45 @@ collect_context() {
 		GITHUB_OUTPUT="$output_file" \
 		RUNNER_TEMP="$runner_temp" \
 		INPUT_TAG_NAME="${1:-service/v1.1.0}" \
+		INPUT_PATHSPECS="${2-}" \
 		TARGET_REPOSITORY=Owner/Project \
 		TARGET_SERVER_URL=https://github.example \
 		bash "$repo_root/create-release/collect-git-context.sh"
+}
+
+make_scoped_history() {
+	local metachar_path='charts/templates/literal $(touch injected); [x].yaml'
+
+	mkdir -p "$repository/charts/templates" "$repository/cmd" "$repository/src"
+	printf 'old chart\n' >"$repository/charts/templates/old chart.yaml"
+	printf 'old app\n' >"$repository/src/obsolete file.go"
+	git -C "$repository" add charts cmd src
+	git -C "$repository" commit -q -m 'Establish scoped baseline'
+	git -C "$repository" tag 'scoped/v1.0.0'
+
+	printf 'chart only\n' >"$repository/charts/templates/chart-only.yaml"
+	git -C "$repository" add charts/templates/chart-only.yaml
+	git -C "$repository" commit -q -m 'Update chart only'
+
+	printf 'app only\n' >"$repository/cmd/server.go"
+	git -C "$repository" add cmd/server.go
+	git -C "$repository" commit -q -m 'Update application only'
+
+	printf 'mixed chart\n' >"$repository/charts/templates/mixed.yaml"
+	printf 'mixed app\n' >>"$repository/cmd/server.go"
+	git -C "$repository" add charts/templates/mixed.yaml cmd/server.go
+	git -C "$repository" commit -q -m 'Update chart and application together'
+
+	git -C "$repository" mv 'charts/templates/old chart.yaml' 'charts/templates/new [chart].yaml'
+	git -C "$repository" commit -q -m 'Rename chart template'
+
+	git -C "$repository" rm -q 'src/obsolete file.go'
+	git -C "$repository" commit -q -m 'Delete obsolete application file'
+
+	printf 'literal metachar path\n' >"$repository/$metachar_path"
+	git -C "$repository" add "$metachar_path"
+	git -C "$repository" commit -q -m 'Add chart path with metacharacters'
+	git -C "$repository" tag 'scoped/v1.1.0'
 }
 
 read_action_output() {
@@ -120,6 +156,102 @@ run_publisher() {
 	! grep -F 'Nested feature detail' "$context_file"
 	grep -F 'BEGIN UNTRUSTED REPOSITORY DATA' "$context_file"
 	grep -F 'END UNTRUSTED REPOSITORY DATA' "$context_file"
+}
+
+@test "collector preserves unscoped behavior when pathspecs are omitted or empty" {
+	collect_context
+	[ "$status" -eq 0 ]
+	unscoped_facts=$(read_action_output facts-file)
+	cp "$unscoped_facts" "$test_root/unscoped-facts.json"
+
+	collect_context service/v1.1.0 ''
+	[ "$status" -eq 0 ]
+	empty_facts=$(read_action_output facts-file)
+	jq -e --slurpfile expected "$test_root/unscoped-facts.json" '. == $expected[0]' "$empty_facts"
+}
+
+@test "collector scopes chart commits and per-commit evidence with an include-only pathspec" {
+	make_scoped_history
+	collect_context scoped/v1.1.0 ':(top,glob)charts/**'
+	[ "$status" -eq 0 ]
+	facts_file=$(read_action_output facts-file)
+	context_file=$(read_action_output context-file)
+
+	jq -e '.commits | map(.subject) == [
+		"Update chart only",
+		"Update chart and application together",
+		"Rename chart template",
+		"Add chart path with metacharacters"
+	]' "$facts_file"
+	grep -F 'charts/templates/chart-only.yaml' "$context_file"
+	grep -F 'charts/templates/mixed.yaml' "$context_file"
+	grep -F 'charts/templates/new [chart].yaml' "$context_file"
+	grep -F 'charts/templates/literal $(touch injected); [x].yaml' "$context_file"
+	! grep -F 'cmd/server.go' "$context_file"
+	! grep -F 'src/obsolete file.go' "$context_file"
+}
+
+@test "collector scopes application commits with match-all plus chart exclusion" {
+	make_scoped_history
+	collect_context scoped/v1.1.0 $':(top,glob)**\n:(top,glob,exclude)charts/**'
+	[ "$status" -eq 0 ]
+	facts_file=$(read_action_output facts-file)
+	context_file=$(read_action_output context-file)
+
+	jq -e '.commits | map(.subject) == [
+		"Update application only",
+		"Update chart and application together",
+		"Delete obsolete application file"
+	]' "$facts_file"
+	grep -F 'cmd/server.go' "$context_file"
+	grep -F 'src/obsolete file.go' "$context_file"
+	! grep -F 'charts/' "$context_file"
+}
+
+@test "collector passes spaces and metacharacters as one literal Git pathspec argument" {
+	make_scoped_history
+	pathspec=':(top,literal)charts/templates/literal $(touch injected); [x].yaml'
+	collect_context scoped/v1.1.0 "$pathspec"
+	[ "$status" -eq 0 ]
+	facts_file=$(read_action_output facts-file)
+	context_file=$(read_action_output context-file)
+
+	jq -e '.commits | map(.subject) == ["Add chart path with metacharacters"]' "$facts_file"
+	grep -F 'charts/templates/literal $(touch injected); [x].yaml' "$context_file"
+	[ ! -e "$repository/injected" ]
+}
+
+@test "collector rejects empty entries, the no-pathspec sentinel, and invalid Git pathspec magic" {
+	collect_context service/v1.1.0 $':(top,glob)charts/**\n\n:(top,glob)cmd/**'
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"pathspecs must not contain empty lines"* ]]
+
+	collect_context service/v1.1.0 ':'
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"must not contain the Git no-pathspec sentinel"* ]]
+
+	collect_context service/v1.1.0 ':(unknown)charts/**'
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"valid native Git pathspecs"* ]]
+}
+
+@test "collector accepts CRLF-delimited pathspecs and one trailing line ending" {
+	collect_context service/v1.1.0 $':(top,literal)release.txt\r\n'
+	[ "$status" -eq 0 ]
+	facts_file=$(read_action_output facts-file)
+	jq -e '.commits | map(.subject) == ["Direct mainline change"]' "$facts_file"
+}
+
+@test "collector accepts a valid pathspec that selects no commits" {
+	collect_context service/v1.1.0 ':(top,literal)missing file.txt'
+	[ "$status" -eq 0 ]
+	facts_file=$(read_action_output facts-file)
+	context_file=$(read_action_output context-file)
+
+	[ "$(jq '.commits | length' "$facts_file")" -eq 0 ]
+	[ "$(jq '.omittedCommitCount' "$facts_file")" -eq 0 ]
+	grep -F 'No mainline commits are present in this tag range.' "$context_file"
+	! grep -F 'release.txt' "$context_file"
 }
 
 @test "collector chooses semantic versions rather than lexical tag order" {
