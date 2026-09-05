@@ -15320,7 +15320,9 @@ const disallowedGeneratedTextRules = [
 const slashSeparatedToken = /[\p{L}\p{N}_.:@~-]+(?:[\\/][\p{L}\p{N}_.:@~-]+)+/gu;
 const allowedSlashSeparatedProse = /* @__PURE__ */ new Set(["CI/CD"]);
 function getActionInput(name) {
-	const environmentName = `INPUT_${name.replaceAll(/[- ]/gu, "_").toUpperCase()}`;
+	const canonicalEnvironmentName = `INPUT_${name.replaceAll(" ", "_").toUpperCase()}`;
+	const aliasEnvironmentName = `INPUT_${name.replaceAll(/[- ]/gu, "_").toUpperCase()}`;
+	const environmentName = Object.hasOwn(process.env, canonicalEnvironmentName) ? canonicalEnvironmentName : aliasEnvironmentName;
 	const value = process.env[environmentName]?.trim() ?? "";
 	if (value === "") throw new Error(`${name} is required`);
 	return value;

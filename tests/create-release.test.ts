@@ -47,35 +47,66 @@ function completedResponse(text: string): unknown {
   };
 }
 
-void test('GitHub-normalized hyphenated action inputs reach the release-note generator', async () => {
+const releaseInputNames = ['openai-api-key', 'context-file', 'facts-file', 'body-file'] as const;
+
+function inputEnvironmentName(name: (typeof releaseInputNames)[number], useAlias: boolean): string {
+  const normalizedName = useAlias ? name.replaceAll('-', '_') : name;
+  return `INPUT_${normalizedName.toUpperCase()}`;
+}
+
+async function exerciseRunInputLookup(options: { canonicalKey?: string; aliasKey?: string }): Promise<{
+  body: string | undefined;
+  clientCreated: boolean;
+  exitCode: number | string | null | undefined;
+  observedKey: string;
+  stderr: string;
+}> {
   const runnerTemp = await mkdtemp(join(tmpdir(), 'create-release-inputs-'));
   const sessionDirectory = join(runnerTemp, 'release-session');
   const contextPath = join(sessionDirectory, 'context.txt');
   const factsPath = join(sessionDirectory, 'facts.json');
   const bodyPath = join(sessionDirectory, 'body.md');
   const environmentNames = [
-    'INPUT_OPENAI_API_KEY',
-    'INPUT_CONTEXT_FILE',
-    'INPUT_FACTS_FILE',
-    'INPUT_BODY_FILE',
+    ...releaseInputNames.flatMap((name) => [inputEnvironmentName(name, false), inputEnvironmentName(name, true)]),
     'RUNNER_TEMP',
-  ] as const;
+  ];
   const previousEnvironment = new Map(environmentNames.map((name) => [name, process.env[name]]));
   const previousExitCode = process.exitCode;
+  const originalStderrWrite = process.stderr.write.bind(process.stderr);
+  let clientCreated = false;
+  let observedKey = '';
+  let stderr = '';
 
   try {
     await mkdir(sessionDirectory);
     await writeFile(contextPath, 'bounded untrusted context', 'utf8');
     await writeFile(factsPath, JSON.stringify(facts), 'utf8');
-    process.env.INPUT_OPENAI_API_KEY = 'openai-secret';
-    process.env.INPUT_CONTEXT_FILE = contextPath;
-    process.env.INPUT_FACTS_FILE = factsPath;
-    process.env.INPUT_BODY_FILE = bodyPath;
+    for (const name of environmentNames) delete process.env[name];
+
+    const inputValues = new Map([
+      ['context-file', contextPath],
+      ['facts-file', factsPath],
+      ['body-file', bodyPath],
+    ]);
+    for (const [useAlias, apiKey] of [
+      [false, options.canonicalKey],
+      [true, options.aliasKey],
+    ] as const) {
+      if (apiKey === undefined) continue;
+      process.env[inputEnvironmentName('openai-api-key', useAlias)] = apiKey;
+      for (const [name, value] of inputValues) {
+        process.env[inputEnvironmentName(name as 'context-file' | 'facts-file' | 'body-file', useAlias)] = value;
+      }
+    }
     process.env.RUNNER_TEMP = runnerTemp;
     process.exitCode = undefined;
+    process.stderr.write = (chunk: string | Uint8Array) => {
+      stderr += chunk.toString();
+      return true;
+    };
 
-    let observedKey = '';
     await run((apiKey) => {
+      clientCreated = true;
       observedKey = apiKey;
       return {
         responses: {
@@ -83,8 +114,8 @@ void test('GitHub-normalized hyphenated action inputs reach the release-note gen
             Promise.resolve(
               completedResponse(
                 JSON.stringify({
-                  description: 'This release improves delivery reliability.',
-                  highlights: ['Handles important release paths more safely'],
+                  description: 'This release improves input compatibility.',
+                  highlights: ['Handles action input environment names safely'],
                 }),
               ),
             ),
@@ -92,10 +123,15 @@ void test('GitHub-normalized hyphenated action inputs reach the release-note gen
       };
     });
 
-    assert.equal(process.exitCode, undefined);
-    assert.equal(observedKey, 'openai-secret');
-    assert.match(await readFile(bodyPath, 'utf8'), /^This release improves delivery reliability\./u);
+    return {
+      body: process.exitCode === undefined ? await readFile(bodyPath, 'utf8') : undefined,
+      clientCreated,
+      exitCode: process.exitCode,
+      observedKey,
+      stderr,
+    };
   } finally {
+    process.stderr.write = originalStderrWrite;
     for (const [name, value] of previousEnvironment) {
       if (value === undefined) delete process.env[name];
       else process.env[name] = value;
@@ -103,6 +139,42 @@ void test('GitHub-normalized hyphenated action inputs reach the release-note gen
     process.exitCode = previousExitCode;
     await rm(runnerTemp, { recursive: true, force: true });
   }
+}
+
+void test('action input lookup is GitHub-compatible and fails safely', async (context) => {
+  await context.test('canonical GitHub hyphenated inputs reach generation', async () => {
+    const result = await exerciseRunInputLookup({ canonicalKey: 'canonical-openai-secret' });
+
+    assert.equal(result.exitCode, undefined);
+    assert.equal(result.observedKey, 'canonical-openai-secret');
+    assert.match(result.body ?? '', /^This release improves input compatibility\./u);
+  });
+
+  await context.test('underscore aliases remain a compatible fallback', async () => {
+    const result = await exerciseRunInputLookup({ aliasKey: 'alias-openai-secret' });
+
+    assert.equal(result.exitCode, undefined);
+    assert.equal(result.observedKey, 'alias-openai-secret');
+  });
+
+  await context.test('canonical inputs take precedence over underscore aliases', async () => {
+    const result = await exerciseRunInputLookup({
+      canonicalKey: 'canonical-openai-secret',
+      aliasKey: 'alias-openai-secret',
+    });
+
+    assert.equal(result.exitCode, undefined);
+    assert.equal(result.observedKey, 'canonical-openai-secret');
+  });
+
+  await context.test('missing required inputs fail without exposing secret values', async () => {
+    const result = await exerciseRunInputLookup({});
+
+    assert.equal(result.clientCreated, false);
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.stderr, 'create-release: failed: category=input-validation reason=operation-failed\n');
+    assert.doesNotMatch(result.stderr, /openai|secret|key/iu);
+  });
 });
 
 void test('the OpenAI request is fixed, stateless, tool-free, bounded, and schema constrained', async () => {
