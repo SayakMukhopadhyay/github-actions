@@ -1,11 +1,11 @@
 name: Chart Update Deploy
-description: Update a Helm dependency in a caller-selected GitOps repository
+description: Update a Helm dependency in the personal GitOps repository or a caller-selected override
 inputs:
   token:
     description: Token with contents write permission for the target repository
     required: true
   environment:
-    description: Name of the environment being deployed
+    description: Environment whose wrapper chart is being promoted
     required: true
   chart-name:
     description: Name of the chart being deployed
@@ -14,8 +14,9 @@ inputs:
     description: Version of the chart dependency to deploy
     required: true
   dependency:
-    description: Name of the dependency to update
-    required: true
+    description: Name of the dependency to update; defaults to chart-name
+    required: false
+    default: ''
   username:
     description: Optional OCI registry username
     required: false
@@ -26,13 +27,14 @@ inputs:
     default: ''
   target-repository:
     description: GitHub owner/repository containing the wrapper chart
-    required: true
+    required: false
+    default: SayakMukhopadhyay/k8s-landscape-charts
   target-ref:
     description: Branch to update in the target repository
     required: false
     default: main
   wrapper-chart-path:
-    description: Wrapper chart path; defaults to chart-name/envs/env
+    description: Wrapper chart path; defaults to chart-name/envs/environment
     required: false
     default: ''
   registry:

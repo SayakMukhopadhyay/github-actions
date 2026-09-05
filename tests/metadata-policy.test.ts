@@ -129,6 +129,16 @@ void test('container build metadata preserves safe optional forwarding', () => {
   assert.equal(buildSteps[0]?.with?.['build-args'], '${{ inputs.build-args }}');
 });
 
+void test('chart promotion metadata exposes personal defaults with explicit overrides', () => {
+  const metadata = readAction('chart-update-deploy');
+  assert.equal(metadata.inputs?.dependency?.required, false);
+  assert.equal(metadata.inputs?.dependency?.default, '');
+  assert.equal(metadata.inputs?.['target-repository']?.required, false);
+  assert.equal(metadata.inputs?.['target-repository']?.default, 'SayakMukhopadhyay/k8s-landscape-charts');
+  assert.equal(metadata.inputs?.['target-ref']?.default, 'main');
+  assert.equal(metadata.inputs?.['wrapper-chart-path']?.default, '');
+});
+
 void test('release-tags fixes the target and keeps Git credentials ephemeral', () => {
   const metadata = readAction('release-tags');
   assert.equal(metadata.inputs?.token?.required, true);

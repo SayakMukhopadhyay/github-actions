@@ -112,7 +112,7 @@ For publication, provide `username` and `password`. Outputs are `chart-name` and
 
 ## `chart-update-deploy`
 
-`SayakMukhopadhyay/github-actions/chart-update-deploy@v1` promotes one Helm dependency in a caller-selected GitOps wrapper chart.
+`SayakMukhopadhyay/github-actions/chart-update-deploy@v1` promotes one Helm dependency in the personal GitOps repository or a caller-selected override.
 
 ```yaml
 - uses: SayakMukhopadhyay/github-actions/chart-update-deploy@v1
@@ -121,12 +121,13 @@ For publication, provide `username` and `password`. Outputs are `chart-name` and
     environment: dev
     chart-name: golfs
     chart-version: 0.7.5-${{ github.sha }}
-    dependency: golfs
-    target-repository: SayakMukhopadhyay/k8s-landscape-charts
-    wrapper-chart-path: golfs/envs/hetzner-fsn1-dc4-prod/dev
 ```
 
 The preferred `token` is a short-lived GitHub App installation token limited to the target repository with `contents: write`; a repository-limited fine-grained PAT is the fallback. Optional OCI authentication uses `registry`, `username`, and `password`.
+
+By default, the action updates `main` in `SayakMukhopadhyay/k8s-landscape-charts`, derives the wrapper chart path as `<chart-name>/envs/<environment>`, and updates a dependency with the same name as `chart-name`. `target-repository`, `target-ref`, `wrapper-chart-path`, and `dependency` remain available for repositories whose layout or dependency name differs.
+
+The default path deliberately follows the BeezLabs first-party convention: each environment owns a complete wrapper chart and may therefore select different dependencies or dependency versions. Existing third-party wrappers that keep `Chart.yaml` directly under `<chart-name>` do not define the first-party pipeline contract; callers targeting one of those layouts must provide `wrapper-chart-path` explicitly.
 
 The action permits only the selected `Chart.yaml`, `Chart.lock`, and dependency archives to change, stages exactly those files, rejects stale no-ops, and relies on a normal non-force push to reject races.
 

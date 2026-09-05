@@ -65,14 +65,17 @@ teardown() {
 make_gitops_fixture() {
 	bare="$test_root/remote.git"
 	repository="$test_root/repository"
+	wrapper_relative=${1:-golfs/envs/dev}
+	wrapper="$repository/$wrapper_relative"
 	git init -q --bare "$bare"
 	make_git_repo "$repository"
 
-	mkdir -p "$repository/dependency/templates" "$repository/golfs/envs/hetzner-fsn1-dc4-prod/dev"
+	mkdir -p "$repository/dependency/templates" "$wrapper"
 	printf 'apiVersion: v2\nname: golfs\ntype: application\nversion: 0.1.0\n' >"$repository/dependency/Chart.yaml"
 	printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: golfs\n' >"$repository/dependency/templates/configmap.yaml"
-	printf 'apiVersion: v2\nname: golfs-wrapper\ntype: application\nversion: 1.0.0\ndependencies:\n  - name: golfs\n    version: "0.1.0"\n    repository: file://../../../../dependency\n' >"$repository/golfs/envs/hetzner-fsn1-dc4-prod/dev/Chart.yaml"
-	helm dependency update "$repository/golfs/envs/hetzner-fsn1-dc4-prod/dev" >/dev/null
+	printf 'replicaCount: 1\n' >"$wrapper/values.yaml"
+	printf 'apiVersion: v2\nname: golfs-wrapper\ntype: application\nversion: 1.0.0\ndependencies:\n  - name: golfs\n    version: "0.1.0"\n    repository: file://../../../dependency\n' >"$wrapper/Chart.yaml"
+	helm dependency update "$wrapper" >/dev/null
 	git -C "$repository" add . && git -C "$repository" commit -q -m initial
 
 	sed -i 's/version: 0.1.0/version: 0.2.0/' "$repository/dependency/Chart.yaml"
@@ -83,16 +86,19 @@ make_gitops_fixture() {
 
 run_promotion() {
 	local version=$1
+	local chart_name=${2:-golfs}
+	local dependency=${3:-}
+	local wrapper_chart_path=${4:-}
 	output_file="$test_root/promotion-output"
 	: >"$output_file"
 	run env GITHUB_WORKSPACE="$test_root" GITHUB_OUTPUT="$output_file" \
 		INPUT_TOKEN=test-token INPUT_CHECKOUT_PATH=repository INPUT_TARGET_REF=main \
-		INPUT_ENVIRONMENT=dev INPUT_CHART_NAME=golfs INPUT_DEPENDENCY=golfs INPUT_CHART_VERSION="$version" \
-		INPUT_WRAPPER_CHART_PATH=golfs/envs/hetzner-fsn1-dc4-prod/dev \
+		INPUT_ENVIRONMENT=dev INPUT_CHART_NAME="$chart_name" INPUT_CHART_VERSION="$version" \
+		INPUT_DEPENDENCY="$dependency" INPUT_WRAPPER_CHART_PATH="$wrapper_chart_path" \
 		bash "$repo_root/chart-update-deploy/chart-update-deploy.sh"
 }
 
-@test "chart-update-deploy commits only wrapper metadata and selected archives" {
+@test "chart-update-deploy derives the environment wrapper and dependency from chart-name" {
 	make_gitops_fixture
 	run_promotion 0.2.0
 	if [[ "$status" -ne 0 ]]; then
@@ -101,10 +107,10 @@ run_promotion() {
 	[ "$status" -eq 0 ]
 	mapfile -t changed < <(git -C "$repository" diff-tree --no-commit-id --name-only -r HEAD | sort)
 	[ "${#changed[@]}" -eq 4 ]
-	[ "${changed[0]}" = golfs/envs/hetzner-fsn1-dc4-prod/dev/Chart.lock ]
-	[ "${changed[1]}" = golfs/envs/hetzner-fsn1-dc4-prod/dev/Chart.yaml ]
-	[ "${changed[2]}" = golfs/envs/hetzner-fsn1-dc4-prod/dev/charts/golfs-0.1.0.tgz ]
-	[ "${changed[3]}" = golfs/envs/hetzner-fsn1-dc4-prod/dev/charts/golfs-0.2.0.tgz ]
+	[ "${changed[0]}" = golfs/envs/dev/Chart.lock ]
+	[ "${changed[1]}" = golfs/envs/dev/Chart.yaml ]
+	[ "${changed[2]}" = golfs/envs/dev/charts/golfs-0.1.0.tgz ]
+	[ "${changed[3]}" = golfs/envs/dev/charts/golfs-0.2.0.tgz ]
 
 	first_promotion_head=$(git -C "$repository" rev-parse HEAD)
 	run_promotion 0.2.0
@@ -112,9 +118,17 @@ run_promotion() {
 	[ "$(git -C "$repository" rev-parse HEAD)" = "$first_promotion_head" ]
 }
 
+@test "chart-update-deploy preserves explicit wrapper and dependency overrides" {
+	make_gitops_fixture custom-service/envs/stage
+	run_promotion 0.2.0 service golfs custom-service/envs/stage
+	[ "$status" -eq 0 ]
+	dependency_version=$(env DEPENDENCY=golfs yq -er '.dependencies[] | select(.name == strenv(DEPENDENCY)) | .version' "$wrapper/Chart.yaml")
+	[ "$dependency_version" = 0.2.0 ]
+}
+
 @test "chart-update-deploy fails instead of repairing inconsistent no-op state" {
 	make_gitops_fixture
-	rm "$repository/golfs/envs/hetzner-fsn1-dc4-prod/dev/charts/golfs-0.1.0.tgz"
+	rm "$wrapper/charts/golfs-0.1.0.tgz"
 	git -C "$repository" add -u && git -C "$repository" commit -q -m inconsistent
 	git -C "$repository" push -q
 	run_promotion 0.1.0
@@ -144,9 +158,9 @@ run_promotion() {
 
 @test "chart-update-deploy rejects duplicate dependency matches" {
 	make_gitops_fixture
-	wrapper="$repository/golfs/envs/hetzner-fsn1-dc4-prod/dev/Chart.yaml"
-	printf '  - name: golfs\n    version: "0.1.0"\n    repository: file://../../../../dependency\n' >>"$wrapper"
-	git -C "$repository" add "$wrapper"
+	chart_file="$wrapper/Chart.yaml"
+	printf '  - name: golfs\n    version: "0.1.0"\n    repository: file://../../../dependency\n' >>"$chart_file"
+	git -C "$repository" add "$chart_file"
 	git -C "$repository" commit -q -m duplicate
 	git -C "$repository" push -q
 
@@ -157,11 +171,10 @@ run_promotion() {
 
 @test "chart-update-deploy rejects unrelated dependency archive changes" {
 	make_gitops_fixture
-	wrapper="$repository/golfs/envs/hetzner-fsn1-dc4-prod/dev"
 	mkdir -p "$repository/other/templates"
 	printf 'apiVersion: v2\nname: other\ntype: application\nversion: 0.1.0\n' >"$repository/other/Chart.yaml"
 	printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: other\n' >"$repository/other/templates/configmap.yaml"
-	DEPENDENCY_PATH='file://../../../../other' yq -i '.dependencies += [{"name": "other", "version": ">=0.1.0", "repository": strenv(DEPENDENCY_PATH)}]' "$wrapper/Chart.yaml"
+	DEPENDENCY_PATH='file://../../../other' yq -i '.dependencies += [{"name": "other", "version": ">=0.1.0", "repository": strenv(DEPENDENCY_PATH)}]' "$wrapper/Chart.yaml"
 	sed -i 's/version: 0.2.0/version: 0.1.0/' "$repository/dependency/Chart.yaml"
 	helm dependency update "$wrapper" >/dev/null
 	sed -i 's/version: 0.1.0/version: 0.2.0/' "$repository/dependency/Chart.yaml"

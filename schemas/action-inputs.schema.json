@@ -76,7 +76,7 @@
                           },
                           "environment": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Name of the environment being deployed"
+                            "description": "Environment whose wrapper chart is being promoted"
                           },
                           "chart-name": {
                             "type": ["string", "number", "boolean"],
@@ -88,7 +88,8 @@
                           },
                           "dependency": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Name of the dependency to update"
+                            "description": "Name of the dependency to update; defaults to chart-name",
+                            "default": ""
                           },
                           "username": {
                             "type": ["string", "number", "boolean"],
@@ -102,7 +103,8 @@
                           },
                           "target-repository": {
                             "type": ["string", "number", "boolean"],
-                            "description": "GitHub owner/repository containing the wrapper chart"
+                            "description": "GitHub owner/repository containing the wrapper chart",
+                            "default": "SayakMukhopadhyay/k8s-landscape-charts"
                           },
                           "target-ref": {
                             "type": ["string", "number", "boolean"],
@@ -111,7 +113,7 @@
                           },
                           "wrapper-chart-path": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Wrapper chart path; defaults to chart-name/envs/env",
+                            "description": "Wrapper chart path; defaults to chart-name/envs/environment",
                             "default": ""
                           },
                           "registry": {
@@ -121,14 +123,7 @@
                           }
                         },
                         "additionalProperties": false,
-                        "required": [
-                          "token",
-                          "environment",
-                          "chart-name",
-                          "chart-version",
-                          "dependency",
-                          "target-repository"
-                        ]
+                        "required": ["token", "environment", "chart-name", "chart-version"]
                       }
                     },
                     "required": ["with"]

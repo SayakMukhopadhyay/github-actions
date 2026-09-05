@@ -44,8 +44,6 @@ void test('accepts valid inputs for each documented consumer action', async () =
         environment: 'production',
         'chart-name': 'api',
         'chart-version': '1.2.3',
-        dependency: 'api',
-        'target-repository': 'example/gitops',
       },
     ],
     [

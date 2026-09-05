@@ -17,7 +17,7 @@ command -v yq > /dev/null || fail "yq v4 is required"
 
 environment=${INPUT_ENVIRONMENT:?environment is required}
 chart_name=${INPUT_CHART_NAME:?chart-name is required}
-dependency=${INPUT_DEPENDENCY:?dependency is required}
+dependency=${INPUT_DEPENDENCY:-$chart_name}
 target_version=${INPUT_CHART_VERSION:?chart-version is required}
 [[ "$target_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]] || fail "chart-version must be an exact semantic version"
 [[ "$dependency" != */* && "$dependency" != *$'\n'* ]] || fail "dependency must be a chart name"
