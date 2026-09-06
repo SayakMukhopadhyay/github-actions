@@ -39,7 +39,7 @@ void test('accepts valid inputs for each documented consumer action', async () =
       {
         'go-version': '1.24',
         'go-working-directory': 'api',
-        'node-version-file': '.node-version',
+        'node-version-file': '.nvmrc',
         'node-working-directory': 'website',
       },
     ],

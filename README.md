@@ -69,7 +69,7 @@ steps:
   with:
     go-version: '1.27'
     go-working-directory: api-server
-    node-version-file: .node-version
+    node-version-file: .nvmrc
     node-working-directory: documentation
 ```
 

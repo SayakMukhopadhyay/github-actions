@@ -24,7 +24,7 @@ checkout_dependency_validation() {
 
 @test "checkout dependencies rejects both Node version selectors" {
 	validation=$(checkout_dependency_validation)
-	run env INPUT_GO_VERSION='' INPUT_NODE_VERSION=24 INPUT_NODE_VERSION_FILE=.node-version bash -c "$validation"
+	run env INPUT_GO_VERSION='' INPUT_NODE_VERSION=24 INPUT_NODE_VERSION_FILE=.nvmrc bash -c "$validation"
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"mutually exclusive"* ]]
 }
@@ -34,7 +34,7 @@ checkout_dependency_validation() {
 	run env INPUT_GO_VERSION=1.27 INPUT_NODE_VERSION=24 INPUT_NODE_VERSION_FILE='' bash -c "$validation"
 	[ "$status" -eq 0 ]
 
-	run env INPUT_GO_VERSION=1.27 INPUT_NODE_VERSION='' INPUT_NODE_VERSION_FILE=.node-version bash -c "$validation"
+	run env INPUT_GO_VERSION=1.27 INPUT_NODE_VERSION='' INPUT_NODE_VERSION_FILE=.nvmrc bash -c "$validation"
 	[ "$status" -eq 0 ]
 }
 
