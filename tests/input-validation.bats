@@ -10,6 +10,34 @@ teardown() {
 	rm -rf "$test_root"
 }
 
+checkout_dependency_validation() {
+	yq -r '.runs.steps[] | select(.name == "Validate dependency configuration") | .run' \
+		"$repo_root/checkout-dependencies/action.yaml"
+}
+
+@test "checkout dependencies requires at least one configured ecosystem" {
+	validation=$(checkout_dependency_validation)
+	run env INPUT_GO_VERSION='' INPUT_NODE_VERSION='' INPUT_NODE_VERSION_FILE='' bash -c "$validation"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"configure at least one ecosystem"* ]]
+}
+
+@test "checkout dependencies rejects both Node version selectors" {
+	validation=$(checkout_dependency_validation)
+	run env INPUT_GO_VERSION='' INPUT_NODE_VERSION=24 INPUT_NODE_VERSION_FILE=.node-version bash -c "$validation"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"mutually exclusive"* ]]
+}
+
+@test "checkout dependencies accepts Go and either Node version selector" {
+	validation=$(checkout_dependency_validation)
+	run env INPUT_GO_VERSION=1.27 INPUT_NODE_VERSION=24 INPUT_NODE_VERSION_FILE='' bash -c "$validation"
+	[ "$status" -eq 0 ]
+
+	run env INPUT_GO_VERSION=1.27 INPUT_NODE_VERSION='' INPUT_NODE_VERSION_FILE=.node-version bash -c "$validation"
+	[ "$status" -eq 0 ]
+}
+
 container_preparation() {
 	yq -r '.runs.steps[] | select(.id == "prepare") | .run' "$repo_root/container-build-push/action.yaml"
 }

@@ -1,15 +1,15 @@
 # Personal GitHub Actions
 
-Nine GitHub Actions for Go applications, container images, Helm charts, immutable release tags, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, and file mutation that benefits from structured code is authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
+Twelve GitHub Actions for Go and npm dependencies, static-site delivery, container images, Helm charts, immutable release tags, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, API calls, and file mutation that benefit from structured code are authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
 
-The moving `@v1` release contains all nine actions documented here.
+The moving `@v1` release contains all twelve actions documented here.
 
 ## Input conventions
 
 - Use descriptive kebab-case names such as `working-directory`, `go-version`, `environment`, and `target-repository`.
-- Credential inputs use generic names such as `token`, `username`, and `password`; `token` may be a GitHub token, GitHub App installation token, or narrowly scoped fallback PAT as appropriate.
+- Credential inputs use generic names such as `token`, `username`, and `password`; the Pages delivery actions use `github-token` to distinguish their GitHub API credential. A token may be a GitHub token, GitHub App installation token, or narrowly scoped fallback PAT as appropriate.
 - Boolean values are lowercase `true` or `false`.
-- V1 supports Go and Helm project metadata. Node, Python, Java, Yarn, and protobuf generation are not included.
+- Dependency checkout supports Go modules and lockfile-based npm projects. Python, Java, Yarn, and protobuf generation are not included.
 - V1 targets GitHub-hosted Ubuntu runners. `chart-update-deploy` requires `yq` v4; the TypeScript-backed version and packaging actions parse YAML from their bundles.
 
 ## `check-version`
@@ -62,14 +62,67 @@ steps:
 
 ## `checkout-dependencies`
 
-`SayakMukhopadhyay/github-actions/checkout-dependencies@v1` checks out a Go repository, configures the requested Go version, caches against the module's `go.sum`, and runs `go mod download`.
+`SayakMukhopadhyay/github-actions/checkout-dependencies@v1` checks out a repository once and installs explicitly selected Go and/or npm dependencies. `working-directory` defaults to `.` and is the fallback for both ecosystems. `go-working-directory` and `node-working-directory` override it independently when non-empty.
 
 ```yaml
 - uses: SayakMukhopadhyay/github-actions/checkout-dependencies@v1
   with:
     go-version: '1.27'
-    working-directory: api-server
+    go-working-directory: api-server
+    node-version-file: .node-version
+    node-working-directory: documentation
 ```
+
+Go setup caches against the resolved module's `go.sum` and runs `go mod download`. Node setup accepts exactly one of `node-version` or `node-version-file`, enables npm's download cache against the resolved project's `package-lock.json`, and runs deterministic `npm ci`. Supplying both Node selectors fails, as does selecting neither ecosystem. Checkout credentials are never persisted.
+
+## `validate-static-site`
+
+`SayakMukhopadhyay/github-actions/validate-static-site@v1` validates one built deployment directory without running a framework, build, lint, package-manager, or link-crawling command.
+
+```yaml
+- uses: SayakMukhopadhyay/github-actions/validate-static-site@v1
+  with:
+    path: dist
+```
+
+The required `path` must exist, be a non-empty directory, contain a regular root `index.html`, and recursively contain only directories and regular files with no symbolic links. This final-directory contract works equally for Astro output, Fumadocs/Next static output, and hand-authored HTML.
+
+## `dispatch-pages-deployment`
+
+`SayakMukhopadhyay/github-actions/dispatch-pages-deployment@v1` sends the fixed `deploy-pages` repository-dispatch event to a publisher repository. The action accepts only `github-token`, `target-repository`, and `artifact-name`; source repository, workflow run ID, and commit SHA come from the current GitHub Actions context.
+
+```yaml
+- uses: SayakMukhopadhyay/github-actions/dispatch-pages-deployment@v1
+  with:
+    github-token: ${{ secrets.PAGES_PUBLISHER_TOKEN }}
+    target-repository: SayakMukhopadhyay/site-publisher
+    artifact-name: static-site
+```
+
+The fixed client payload contains only `source_repository`, `source_run_id`, `source_sha`, and `artifact_name`. Inputs and context are validated before the API call, transient failures receive bounded retries, and response bodies are never included in failures. The caller owns artifact upload, triggers, conditions, permissions, and the authorization policy for the publisher target.
+
+## `deploy-pages-artifact`
+
+`SayakMukhopadhyay/github-actions/deploy-pages-artifact@v1` is the publisher-side composite. It downloads one named artifact from `source-repository` and `source-run-id`, validates it with `validate-static-site`, configures Pages, packages the validated directory as the GitHub Pages artifact, and deploys it.
+
+```yaml
+permissions:
+  actions: read
+  contents: read
+  pages: write
+  id-token: write
+
+steps:
+  - id: pages
+    uses: SayakMukhopadhyay/github-actions/deploy-pages-artifact@v1
+    with:
+      github-token: ${{ secrets.SOURCE_ARTIFACT_TOKEN }}
+      source-repository: ${{ github.event.client_payload.source_repository }}
+      source-run-id: ${{ github.event.client_payload.source_run_id }}
+      artifact-name: ${{ github.event.client_payload.artifact_name }}
+```
+
+Output `page-url` is the deployed Pages URL. The consuming workflow remains responsible for validating and allowlisting dispatch payload values, selecting triggers and jobs, and defining conditions, permissions, environment, concurrency, ordering, and approval gates. This action is not a reusable workflow.
 
 ## `container-build-push`
 
@@ -242,7 +295,7 @@ The wrapper references SchemaStore's live workflow schema and the committed `sch
 
 The repository is one npm package and does not use workspaces. Each executable action keeps its TypeScript entry point, `action.yaml`, and generated `dist/index.mjs` together:
 
-- `check-version/` is directly callable as a JavaScript action.
+- `check-version/`, `validate-static-site/`, and `dispatch-pages-deployment/` are directly callable as JavaScript actions.
 - `actions/is-file-changed/`, `actions/bump-version/`, `actions/helm-package-push/`, and `actions/create-release/` are implementation actions invoked by their root-level composite wrappers.
 - `tooling/` contains repository-maintenance programs such as schema generation.
 
@@ -266,7 +319,7 @@ npm run schema:generate
 npm run bundle
 ```
 
-The five `bundle:<action>` scripts call Rolldown directly and can be run individually. No custom TypeScript bundle driver is used.
+The seven `bundle:<action>` scripts call Rolldown directly and can be run individually. No custom TypeScript bundle driver is used.
 
 TypeScript in this repository—production actions, tooling, and tests—must never spawn an external process. It may parse files and use JavaScript facilities such as the `RegExp` constructor. Git, Helm, `yq`, and GitHub CLI transactions belong in checked shell files or composite steps. Shell integration tests invoke those command boundaries directly rather than through Node.
 
@@ -288,7 +341,7 @@ Licensed dependency metadata lives under `.licenses/npm` and is governed by `.li
 
 ## CI and v1 promotion
 
-Ubuntu CI runs TypeScript, ESLint, Prettier, pure Node tests, shell integration tests, Ajv schema fixtures, deterministic bundle/schema drift checks, bundle syntax smoke checks, ShellCheck, attestation-verified actionlint, offline Zizmor, Licensed, and credential-free container/Helm action fixtures. External actions use reviewed full commit SHAs. Dependabot opens weekly npm and GitHub Actions pull requests; updates are never automerged.
+Ubuntu CI runs TypeScript, ESLint, Prettier, pure Node tests, shell integration tests, Ajv schema fixtures, deterministic bundle/schema drift checks, bundle syntax smoke checks, ShellCheck, attestation-verified actionlint, offline Zizmor, Licensed, and credential-free dependency/static-site/container/Helm action fixtures. External actions use reviewed full commit SHAs. Dependabot opens weekly npm and GitHub Actions pull requests; updates are never automerged.
 
 Source changes do not move `v1`. To promote or intentionally roll back, manually run the **Promote v1** workflow with a full 40-character commit SHA from `main`. It verifies that exact commit is reachable from `main`, then moves the lightweight `v1` tag with force-with-lease protection. The promotion job alone receives `contents: write`; no semver tag or GitHub Release is created for this action repository.
 

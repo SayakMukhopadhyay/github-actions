@@ -1,0 +1,47 @@
+name: Deploy Pages Artifact
+description: Download, validate, package, and deploy a cross-repository static-site artifact to GitHub Pages
+inputs:
+  github-token:
+    description: Token that can read the source artifact and deploy Pages in the target repository
+    required: true
+  source-repository:
+    description: Source repository in owner/repository form
+    required: true
+  source-run-id:
+    description: Source workflow run ID containing the artifact
+    required: true
+  artifact-name:
+    description: Name of the source workflow artifact containing the built static site
+    required: true
+outputs:
+  page-url:
+    description: URL of the deployed GitHub Pages site
+    value: ${{ steps.deployment.outputs.page_url }}
+runs:
+  using: composite
+  steps:
+    - name: Download source artifact
+      uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ runner.temp }}/pages-source
+        github-token: ${{ inputs.github-token }}
+        repository: ${{ inputs.source-repository }}
+        run-id: ${{ inputs.source-run-id }}
+    - name: Validate static site
+      uses: $/validate-static-site
+      with:
+        path: ${{ runner.temp }}/pages-source
+    - name: Configure GitHub Pages
+      uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      with:
+        token: ${{ inputs.github-token }}
+    - name: Upload GitHub Pages artifact
+      uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      with:
+        path: ${{ runner.temp }}/pages-source
+    - id: deployment
+      name: Deploy GitHub Pages
+      uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+      with:
+        token: ${{ inputs.github-token }}

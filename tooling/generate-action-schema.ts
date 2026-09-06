@@ -150,7 +150,7 @@ export async function generateActionSchema(root = repositoryRoot()): Promise<voi
   const actions = await readConsumerActions(root);
   const schema = buildSchema(actions);
   const destination = path.join(root, 'schemas', 'action-inputs.schema.json');
-  await writeFile(destination, await format(JSON.stringify(schema), { parser: 'json', printWidth: 100 }), 'utf8');
+  await writeFile(destination, await format(JSON.stringify(schema), { parser: 'json', printWidth: 120 }), 'utf8');
 }
 
 if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

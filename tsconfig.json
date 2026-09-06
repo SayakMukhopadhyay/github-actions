@@ -12,5 +12,12 @@
     "types": ["node"],
     "skipLibCheck": true
   },
-  "include": ["check-version/**/*.ts", "actions/**/*.ts", "tooling/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "check-version/**/*.ts",
+    "validate-static-site/**/*.ts",
+    "dispatch-pages-deployment/**/*.ts",
+    "actions/**/*.ts",
+    "tooling/**/*.ts",
+    "tests/**/*.ts"
+  ]
 }

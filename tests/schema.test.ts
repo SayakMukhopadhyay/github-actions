@@ -34,7 +34,15 @@ void test('accepts valid inputs for each documented consumer action', async () =
     ['check-version', {}],
     ['is-file-changed', { pattern: '^charts/' }],
     ['bump-version', { token: '${{ secrets.GITHUB_TOKEN }}' }],
-    ['checkout-dependencies', { 'go-version': '1.24' }],
+    [
+      'checkout-dependencies',
+      {
+        'go-version': '1.24',
+        'go-working-directory': 'api',
+        'node-version-file': '.node-version',
+        'node-working-directory': 'website',
+      },
+    ],
     ['container-build-push', { version: '1.2.3' }],
     ['helm-package-push', {}],
     [
@@ -61,6 +69,24 @@ void test('accepts valid inputs for each documented consumer action', async () =
       {
         token: '${{ secrets.GITHUB_TOKEN }}',
         tags: 'v1.2.3\ncharts/v1.2.3',
+      },
+    ],
+    ['validate-static-site', { path: 'dist' }],
+    [
+      'dispatch-pages-deployment',
+      {
+        'github-token': '${{ secrets.PUBLISHER_TOKEN }}',
+        'target-repository': 'SayakMukhopadhyay/site-publisher',
+        'artifact-name': 'static-site',
+      },
+    ],
+    [
+      'deploy-pages-artifact',
+      {
+        'github-token': '${{ secrets.SOURCE_TOKEN }}',
+        'source-repository': 'SayakMukhopadhyay/source-site',
+        'source-run-id': '${{ github.event.client_payload.source_run_id }}',
+        'artifact-name': 'static-site',
       },
     ],
   ];

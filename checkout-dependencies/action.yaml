@@ -1,27 +1,75 @@
 name: Checkout Dependencies
-description: Checkout a Go project and download its module dependencies
+description: Checkout a Go and/or npm project and install its locked dependencies
 inputs:
   working-directory:
-    description: Go module directory relative to the checkout
+    description: Common project directory used when an ecosystem-specific directory is empty
     required: false
     default: .
   go-version:
     description: Go version to configure
-    required: true
+    required: false
+    default: ''
+  go-working-directory:
+    description: Go module directory; defaults to working-directory when empty
+    required: false
+    default: ''
+  node-version:
+    description: Node.js version to configure; mutually exclusive with node-version-file
+    required: false
+    default: ''
+  node-version-file:
+    description: Node.js version file relative to the checkout; mutually exclusive with node-version
+    required: false
+    default: ''
+  node-working-directory:
+    description: npm project directory; defaults to working-directory when empty
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
+    - name: Validate dependency configuration
+      shell: bash
+      env:
+        INPUT_GO_VERSION: ${{ inputs.go-version }}
+        INPUT_NODE_VERSION: ${{ inputs.node-version }}
+        INPUT_NODE_VERSION_FILE: ${{ inputs.node-version-file }}
+      run: |
+        set -euo pipefail
+        if [[ -n $INPUT_NODE_VERSION && -n $INPUT_NODE_VERSION_FILE ]]; then
+          printf 'node-version and node-version-file are mutually exclusive; provide exactly one to enable Node.js.\n' >&2
+          exit 1
+        fi
+        if [[ -z $INPUT_GO_VERSION && -z $INPUT_NODE_VERSION && -z $INPUT_NODE_VERSION_FILE ]]; then
+          printf 'configure at least one ecosystem with go-version, node-version, or node-version-file.\n' >&2
+          exit 1
+        fi
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     - name: Set up Go
+      if: inputs.go-version != ''
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version: ~${{ inputs.go-version }}
         cache: true
-        cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+        cache-dependency-path: ${{ format('{0}/go.sum', inputs.go-working-directory != '' && inputs.go-working-directory || inputs.working-directory) }}
     - name: Download Go dependencies
+      if: inputs.go-version != ''
       shell: bash
-      working-directory: ${{ inputs.working-directory }}
+      working-directory: ${{ inputs.go-working-directory != '' && inputs.go-working-directory || inputs.working-directory }}
       run: go mod download
+    - name: Set up Node.js
+      if: inputs.node-version != '' || inputs.node-version-file != ''
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        node-version-file: ${{ inputs.node-version-file }}
+        cache: npm
+        cache-dependency-path: ${{ format('{0}/package-lock.json', inputs.node-working-directory != '' && inputs.node-working-directory || inputs.working-directory) }}
+    - name: Install npm dependencies
+      if: inputs.node-version != '' || inputs.node-version-file != ''
+      shell: bash
+      working-directory: ${{ inputs.node-working-directory != '' && inputs.node-working-directory || inputs.working-directory }}
+      run: npm ci

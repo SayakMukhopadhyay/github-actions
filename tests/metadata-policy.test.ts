@@ -18,10 +18,12 @@ interface ActionOutput {
 interface ActionStep {
   env?: Record<string, unknown>;
   id?: unknown;
+  if?: unknown;
   run?: unknown;
   shell?: unknown;
   uses?: unknown;
   with?: Record<string, unknown>;
+  'working-directory'?: unknown;
 }
 
 interface ActionMetadata {
@@ -45,7 +47,7 @@ interface WorkflowMetadata {
 
 const root = path.resolve(import.meta.dirname, '..');
 const immutableAction = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[0-9a-f]{40}$/u;
-const internalAction = /^\$\/actions\/[a-z0-9-]+$/u;
+const internalAction = /^\$\/(?:actions\/)?[a-z0-9-]+$/u;
 function readYaml<T>(file: string): T {
   return parse(readFileSync(file, 'utf8')) as T;
 }
@@ -127,6 +129,58 @@ void test('container build metadata preserves safe optional forwarding', () => {
   );
   assert.equal(buildSteps.length, 1);
   assert.equal(buildSteps[0]?.with?.['build-args'], '${{ inputs.build-args }}');
+});
+
+void test('checkout-dependencies supports explicit Go and npm selection with one secure checkout', () => {
+  const metadata = readAction('checkout-dependencies');
+  assert.equal(metadata.inputs?.['working-directory']?.default, '.');
+  assert.equal(metadata.inputs?.['go-version']?.required, false);
+  assert.equal(metadata.inputs?.['go-version']?.default, '');
+  assert.equal(metadata.inputs?.['go-working-directory']?.default, '');
+  assert.equal(metadata.inputs?.['node-version']?.default, '');
+  assert.equal(metadata.inputs?.['node-version-file']?.default, '');
+  assert.equal(metadata.inputs?.['node-working-directory']?.default, '');
+
+  const steps = metadata.runs?.steps ?? [];
+  const checkoutSteps = steps.filter(
+    (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
+  );
+  assert.equal(checkoutSteps.length, 1);
+  assert.equal(checkoutSteps[0]?.with?.['persist-credentials'], false);
+
+  const setupNode = steps.find((step) => typeof step.uses === 'string' && step.uses.startsWith('actions/setup-node@'));
+  assert.equal(setupNode?.with?.cache, 'npm');
+  assert.match(String(setupNode?.with?.['cache-dependency-path']), /package-lock\.json/u);
+  assert.equal('cache-dependency-path' in (metadata.inputs ?? {}), false);
+
+  const npmInstall = steps.find((step) => step.run === 'npm ci');
+  assert.notEqual(npmInstall, undefined);
+  assert.match(String(npmInstall?.['working-directory']), /node-working-directory/u);
+});
+
+void test('Pages deployment metadata keeps dispatch and publication contracts narrow', () => {
+  const dispatch = readAction('dispatch-pages-deployment');
+  assert.deepEqual(Object.keys(dispatch.inputs ?? {}).sort(), ['artifact-name', 'github-token', 'target-repository']);
+
+  const deploy = readAction('deploy-pages-artifact');
+  assert.deepEqual(Object.keys(deploy.inputs ?? {}).sort(), [
+    'artifact-name',
+    'github-token',
+    'source-repository',
+    'source-run-id',
+  ]);
+  assert.equal(deploy.outputs?.['page-url']?.value, '${{ steps.deployment.outputs.page_url }}');
+  const steps = deploy.runs?.steps ?? [];
+  assert.deepEqual(
+    steps.map((step) => step.uses),
+    [
+      'actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131',
+      '$/validate-static-site',
+      'actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d',
+      'actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9',
+      'actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346',
+    ],
+  );
 });
 
 void test('chart promotion metadata exposes personal defaults with explicit overrides', () => {

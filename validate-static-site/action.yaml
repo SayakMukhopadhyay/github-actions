@@ -1,0 +1,9 @@
+name: Validate Static Site
+description: Validate a built directory against the deployable static-site contract
+inputs:
+  path:
+    description: Path to the built static-site directory
+    required: true
+runs:
+  using: node24
+  main: dist/index.mjs

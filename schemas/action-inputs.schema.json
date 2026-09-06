@@ -16,9 +16,7 @@
               "allOf": [
                 {
                   "if": {
-                    "properties": {
-                      "uses": { "const": "SayakMukhopadhyay/github-actions/bump-version@v1" }
-                    },
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/bump-version@v1" } },
                     "required": ["uses"]
                   },
                   "then": {
@@ -60,9 +58,7 @@
                 },
                 {
                   "if": {
-                    "properties": {
-                      "uses": { "const": "SayakMukhopadhyay/github-actions/chart-update-deploy@v1" }
-                    },
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/chart-update-deploy@v1" } },
                     "required": ["uses"]
                   },
                   "then": {
@@ -131,9 +127,7 @@
                 },
                 {
                   "if": {
-                    "properties": {
-                      "uses": { "const": "SayakMukhopadhyay/github-actions/check-version@v1" }
-                    },
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/check-version@v1" } },
                     "required": ["uses"]
                   },
                   "then": {
@@ -159,11 +153,7 @@
                 },
                 {
                   "if": {
-                    "properties": {
-                      "uses": {
-                        "const": "SayakMukhopadhyay/github-actions/checkout-dependencies@v1"
-                      }
-                    },
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/checkout-dependencies@v1" } },
                     "required": ["uses"]
                   },
                   "then": {
@@ -173,28 +163,43 @@
                         "properties": {
                           "working-directory": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Go module directory relative to the checkout",
+                            "description": "Common project directory used when an ecosystem-specific directory is empty",
                             "default": "."
                           },
                           "go-version": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Go version to configure"
+                            "description": "Go version to configure",
+                            "default": ""
+                          },
+                          "go-working-directory": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Go module directory; defaults to working-directory when empty",
+                            "default": ""
+                          },
+                          "node-version": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Node.js version to configure; mutually exclusive with node-version-file",
+                            "default": ""
+                          },
+                          "node-version-file": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Node.js version file relative to the checkout; mutually exclusive with node-version",
+                            "default": ""
+                          },
+                          "node-working-directory": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "npm project directory; defaults to working-directory when empty",
+                            "default": ""
                           }
                         },
-                        "additionalProperties": false,
-                        "required": ["go-version"]
+                        "additionalProperties": false
                       }
-                    },
-                    "required": ["with"]
+                    }
                   }
                 },
                 {
                   "if": {
-                    "properties": {
-                      "uses": {
-                        "const": "SayakMukhopadhyay/github-actions/container-build-push@v1"
-                      }
-                    },
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/container-build-push@v1" } },
                     "required": ["uses"]
                   },
                   "then": {
@@ -266,9 +271,7 @@
                 },
                 {
                   "if": {
-                    "properties": {
-                      "uses": { "const": "SayakMukhopadhyay/github-actions/create-release@v1" }
-                    },
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/create-release@v1" } },
                     "required": ["uses"]
                   },
                   "then": {
@@ -307,9 +310,73 @@
                 },
                 {
                   "if": {
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/deploy-pages-artifact@v1" } },
+                    "required": ["uses"]
+                  },
+                  "then": {
                     "properties": {
-                      "uses": { "const": "SayakMukhopadhyay/github-actions/helm-package-push@v1" }
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "github-token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Token that can read the source artifact and deploy Pages in the target repository"
+                          },
+                          "source-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Source repository in owner/repository form"
+                          },
+                          "source-run-id": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Source workflow run ID containing the artifact"
+                          },
+                          "artifact-name": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Name of the source workflow artifact containing the built static site"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["github-token", "source-repository", "source-run-id", "artifact-name"]
+                      }
                     },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "uses": { "const": "SayakMukhopadhyay/github-actions/dispatch-pages-deployment@v1" }
+                    },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "github-token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Token with contents write permission for the target repository"
+                          },
+                          "target-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Target publisher repository in owner/repository form"
+                          },
+                          "artifact-name": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Name of the source workflow artifact containing the built static site"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["github-token", "target-repository", "artifact-name"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/helm-package-push@v1" } },
                     "required": ["uses"]
                   },
                   "then": {
@@ -365,9 +432,7 @@
                 },
                 {
                   "if": {
-                    "properties": {
-                      "uses": { "const": "SayakMukhopadhyay/github-actions/is-file-changed@v1" }
-                    },
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/is-file-changed@v1" } },
                     "required": ["uses"]
                   },
                   "then": {
@@ -394,9 +459,7 @@
                 },
                 {
                   "if": {
-                    "properties": {
-                      "uses": { "const": "SayakMukhopadhyay/github-actions/release-tags@v1" }
-                    },
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/release-tags@v1" } },
                     "required": ["uses"]
                   },
                   "then": {
@@ -420,6 +483,28 @@
                         },
                         "additionalProperties": false,
                         "required": ["token", "tags"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/validate-static-site@v1" } },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "path": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Path to the built static-site directory"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["path"]
                       }
                     },
                     "required": ["with"]

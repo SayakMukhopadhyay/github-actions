@@ -1,0 +1,15 @@
+name: Dispatch Pages Deployment
+description: Dispatch a fixed Pages publication request to a target repository
+inputs:
+  github-token:
+    description: Token with contents write permission for the target repository
+    required: true
+  target-repository:
+    description: Target publisher repository in owner/repository form
+    required: true
+  artifact-name:
+    description: Name of the source workflow artifact containing the built static site
+    required: true
+runs:
+  using: node24
+  main: dist/index.mjs

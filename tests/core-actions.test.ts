@@ -89,7 +89,14 @@ function importedModule(node: ts.Node): string | undefined {
 void test('TypeScript sources never import command-execution modules', () => {
   const repositoryRoot = join(import.meta.dirname, '..');
   const forbiddenModules = new Set(['node:child_process', 'child_process']);
-  const sourceRoots = ['check-version', 'actions', 'tooling', 'tests'];
+  const sourceRoots = [
+    'check-version',
+    'validate-static-site',
+    'dispatch-pages-deployment',
+    'actions',
+    'tooling',
+    'tests',
+  ];
   const violations: string[] = [];
 
   for (const sourceRoot of sourceRoots) {

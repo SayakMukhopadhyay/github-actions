@@ -82,6 +82,8 @@ jobs:
         run: >-
           git diff --exit-code --
           check-version/dist
+          validate-static-site/dist
+          dispatch-pages-deployment/dist
           actions/is-file-changed/dist
           actions/bump-version/dist
           actions/helm-package-push/dist
@@ -90,6 +92,8 @@ jobs:
       - name: Smoke-check ESM action bundles
         run: |
           node --check check-version/dist/index.mjs
+          node --check validate-static-site/dist/index.mjs
+          node --check dispatch-pages-deployment/dist/index.mjs
           node --check actions/is-file-changed/dist/index.mjs
           node --check actions/bump-version/dist/index.mjs
           node --check actions/helm-package-push/dist/index.mjs
@@ -196,6 +200,12 @@ jobs:
         with:
           working-directory: tests/fixtures/go-chart
           go-version: '1.27'
+          node-version-file: .node-version
+
+      - name: Validate static site fixture
+        uses: $/validate-static-site
+        with:
+          path: tests/fixtures/static-site
 
       - name: Validate fixture versions
         uses: $/check-version
