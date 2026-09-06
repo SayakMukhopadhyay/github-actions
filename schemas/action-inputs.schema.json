@@ -320,7 +320,7 @@
                         "properties": {
                           "github-token": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Token that can read the source artifact and deploy Pages in the target repository"
+                            "description": "Token that can read the source artifact"
                           },
                           "source-repository": {
                             "type": ["string", "number", "boolean"],
