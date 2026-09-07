@@ -126,7 +126,7 @@ Output `page-url` is the deployed Pages URL. The consuming workflow remains resp
 
 ## `container-build-push`
 
-`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes `registry/image-repository[/component]:version`. It preserves the reference action's component and additional-build-context behavior, forwards optional multiline `build-args` unchanged to Docker Buildx, and passes the existing optional `auth-token` input to BuildKit safely.
+`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes `registry/image-repository[/component]:version`. It preserves the reference action's component and additional-build-context behavior, forwards optional multiline `build-args`, `cache-from`, and `cache-to` inputs unchanged to Docker Buildx, and passes the existing optional `auth-token` input to BuildKit safely. The action does not select or configure a cache backend; both cache inputs default to empty, preserving the behavior of callers that do not opt in.
 
 ```yaml
 - uses: SayakMukhopadhyay/github-actions/container-build-push@v1
@@ -142,6 +142,15 @@ Output `page-url` is the deployed Pages URL. The consuming workflow remains resp
 ```
 
 In this example, the caller obtains `VERSION` from its authoritative root `VERSION` file; `COMMIT` is the current GitHub SHA. These build arguments can populate application linker metadata, while the action independently supplies dynamic OCI `created`, `version`, `revision`, and `source` labels. Build arguments are not secrets: use `auth-token` for the supported BuildKit secret and never put credentials in `build-args`.
+
+Callers can independently select any Buildx-supported external cache backend. For example, two source-only builds can share content-addressed layers through GitHub Actions cache without sharing generated files or workflow artifacts:
+
+```yaml
+cache-from: type=gha,scope=docs
+cache-to: type=gha,mode=max,scope=docs
+```
+
+Both inputs also accept Docker Buildx's newline-delimited form for multiple cache entries. Values are forwarded verbatim; backend choice, scope naming, export mode, and required workflow permissions remain the caller's responsibility.
 
 For publication, provide `username` and `password` (the password may be `github.token`). GHCR requires `packages: write`.
 

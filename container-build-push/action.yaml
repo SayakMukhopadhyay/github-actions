@@ -36,6 +36,14 @@ inputs:
     description: Optional build arguments forwarded unchanged to Docker Buildx
     required: false
     default: ''
+  cache-from:
+    description: Optional newline-delimited external cache sources forwarded unchanged to Docker Buildx
+    required: false
+    default: ''
+  cache-to:
+    description: Optional newline-delimited external cache destinations forwarded unchanged to Docker Buildx
+    required: false
+    default: ''
   registry:
     description: Container registry host
     required: false
@@ -108,6 +116,8 @@ runs:
         context: ${{ inputs.working-directory }}
         build-contexts: ${{ inputs.build-contexts }}
         build-args: ${{ inputs.build-args }}
+        cache-from: ${{ inputs.cache-from }}
+        cache-to: ${{ inputs.cache-to }}
         secrets: ${{ inputs.auth-token != '' && format('auth-token={0}', inputs.auth-token) || '' }}
         pull: true
         push: ${{ inputs.push }}

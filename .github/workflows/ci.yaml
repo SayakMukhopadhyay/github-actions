@@ -221,6 +221,10 @@ jobs:
           build-args: |
             VERSION=fixture-version
             COMMIT=fixture-commit
+          cache-from: |
+            type=gha,scope=github-actions-container-fixture
+          cache-to: |
+            type=gha,mode=max,scope=github-actions-container-fixture
           push: 'false'
 
       - name: Package fixture chart

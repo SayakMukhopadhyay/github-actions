@@ -251,6 +251,16 @@
                             "description": "Optional build arguments forwarded unchanged to Docker Buildx",
                             "default": ""
                           },
+                          "cache-from": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional newline-delimited external cache sources forwarded unchanged to Docker Buildx",
+                            "default": ""
+                          },
+                          "cache-to": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional newline-delimited external cache destinations forwarded unchanged to Docker Buildx",
+                            "default": ""
+                          },
                           "registry": {
                             "type": ["string", "number", "boolean"],
                             "description": "Container registry host",

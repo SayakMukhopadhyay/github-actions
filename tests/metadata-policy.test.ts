@@ -121,14 +121,21 @@ void test('consumer action metadata is complete and uses safe runtime boundaries
   }
 });
 
-void test('container build metadata preserves safe optional forwarding', () => {
+void test('container build metadata preserves empty defaults and exact optional forwarding', () => {
   const metadata = readAction('container-build-push');
-  assert.equal(metadata.inputs?.['build-args']?.default, '');
+  for (const input of ['build-contexts', 'build-args', 'cache-from', 'cache-to']) {
+    assert.equal(metadata.inputs?.[input]?.required, false, `${input} is optional`);
+    assert.equal(metadata.inputs?.[input]?.default, '', `${input} has an empty default`);
+  }
+
   const buildSteps = (metadata.runs?.steps ?? []).filter(
     (step) => typeof step.uses === 'string' && step.uses.startsWith('docker/build-push-action@'),
   );
   assert.equal(buildSteps.length, 1);
+  assert.equal(buildSteps[0]?.with?.['build-contexts'], '${{ inputs.build-contexts }}');
   assert.equal(buildSteps[0]?.with?.['build-args'], '${{ inputs.build-args }}');
+  assert.equal(buildSteps[0]?.with?.['cache-from'], '${{ inputs.cache-from }}');
+  assert.equal(buildSteps[0]?.with?.['cache-to'], '${{ inputs.cache-to }}');
 });
 
 void test('checkout-dependencies supports explicit Go and npm selection with one secure checkout', () => {
@@ -239,10 +246,12 @@ void test('release-tags fixes the target and keeps Git credentials ephemeral', (
   assert.doesNotMatch(transaction, /git tag/u);
 });
 
-void test('CI exercises multiline container build arguments through the consumer action', () => {
+void test('CI exercises multiline container build and external cache inputs through the consumer action', () => {
   const workflow = readYaml<WorkflowMetadata>(path.join(root, '.github', 'workflows', 'ci.yaml'));
   const steps = workflow.jobs?.['action-level']?.steps ?? [];
   const fixtures = steps.filter((step) => step.uses === '$/container-build-push');
   assert.equal(fixtures.length, 1);
   assert.equal(fixtures[0]?.with?.['build-args'], 'VERSION=fixture-version\nCOMMIT=fixture-commit\n');
+  assert.equal(fixtures[0]?.with?.['cache-from'], 'type=gha,scope=github-actions-container-fixture\n');
+  assert.equal(fixtures[0]?.with?.['cache-to'], 'type=gha,mode=max,scope=github-actions-container-fixture\n');
 });
