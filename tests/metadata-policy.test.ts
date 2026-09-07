@@ -193,6 +193,22 @@ void test('chart promotion metadata exposes personal defaults with explicit over
   assert.equal(metadata.inputs?.['wrapper-chart-path']?.default, '');
 });
 
+void test('static-site promotion metadata keeps the fixed dependency contract narrow', () => {
+  const metadata = readAction('static-site-update-deploy');
+  assert.deepEqual(Object.keys(metadata.inputs ?? {}).sort(), [
+    'chart-name',
+    'environment',
+    'image-version',
+    'target-ref',
+    'target-repository',
+    'token',
+    'wrapper-chart-path',
+  ]);
+  assert.equal(metadata.inputs?.['target-repository']?.default, 'SayakMukhopadhyay/k8s-landscape-charts');
+  assert.equal(metadata.inputs?.['target-ref']?.default, 'main');
+  assert.equal(metadata.inputs?.['wrapper-chart-path']?.default, '');
+});
+
 void test('release-tags fixes the target and keeps Git credentials ephemeral', () => {
   const metadata = readAction('release-tags');
   assert.equal(metadata.inputs?.token?.required, true);

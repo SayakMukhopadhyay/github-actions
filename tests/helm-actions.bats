@@ -98,6 +98,38 @@ run_promotion() {
 		bash "$repo_root/chart-update-deploy/chart-update-deploy.sh"
 }
 
+make_static_site_gitops_fixture() {
+	bare="$test_root/remote.git"
+	repository="$test_root/repository"
+	wrapper_relative=${1:-landscape/envs/dev}
+	wrapper="$repository/$wrapper_relative"
+	git init -q --bare "$bare"
+	make_git_repo "$repository"
+
+	mkdir -p "$repository/static-sites/templates" "$wrapper"
+	printf 'apiVersion: v2\nname: static-sites\ntype: application\nversion: 1.0.0\n' >"$repository/static-sites/Chart.yaml"
+	printf 'image:\n  repository: ghcr.io/example/static-site\n  tag: initial\n' >"$repository/static-sites/values.yaml"
+	printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: static-site\ndata:\n  image-tag: {{ .Values.image.tag | quote }}\n' >"$repository/static-sites/templates/configmap.yaml"
+	printf 'apiVersion: v2\nname: landscape-wrapper\ntype: application\nversion: 1.0.0\ndependencies:\n  - name: static-sites\n    alias: staticSites\n    version: "1.0.0"\n    repository: file://../../../static-sites\n' >"$wrapper/Chart.yaml"
+	printf 'staticSites:\n  image:\n    tag: initial\n' >"$wrapper/values.yaml"
+	helm dependency update "$wrapper" >/dev/null
+	git -C "$repository" add . && git -C "$repository" commit -q -m initial
+	git -C "$repository" remote add origin "$bare"
+	git -C "$repository" push -q -u origin main
+}
+
+run_static_site_promotion() {
+	local version=$1
+	local chart_name=${2:-landscape}
+	local wrapper_chart_path=${3:-}
+	local environment=${4:-dev}
+	run env GITHUB_WORKSPACE="$test_root" \
+		INPUT_TOKEN=test-token INPUT_CHECKOUT_PATH=repository INPUT_TARGET_REF=main \
+		INPUT_ENVIRONMENT="$environment" INPUT_CHART_NAME="$chart_name" INPUT_IMAGE_VERSION="$version" \
+		INPUT_WRAPPER_CHART_PATH="$wrapper_chart_path" \
+		bash "$repo_root/static-site-update-deploy/static-site-update-deploy.sh"
+}
+
 @test "chart-update-deploy derives the environment wrapper and dependency from chart-name" {
 	make_gitops_fixture
 	run_promotion 0.2.0
@@ -191,5 +223,107 @@ run_promotion() {
 	run_promotion 0.2.0
 	[ "$status" -ne 0 ]
 	[[ "$output" == *"changed unexpected path"* ]]
+	[ "$(git --git-dir="$bare" rev-parse refs/heads/main)" = "$remote_head" ]
+}
+
+@test "static-site-update-deploy derives the environment wrapper and updates the fixed alias" {
+	make_static_site_gitops_fixture
+	run_static_site_promotion build-abcdef1234567890
+	if [[ "$status" -ne 0 ]]; then
+		printf '%s\n' "$output"
+	fi
+	[ "$status" -eq 0 ]
+	mapfile -t changed < <(git -C "$repository" diff-tree --no-commit-id --name-only -r HEAD)
+	[ "${#changed[@]}" -eq 1 ]
+	[ "${changed[0]}" = landscape/envs/dev/values.yaml ]
+	[ "$(yq -er '.staticSites.image.tag' "$wrapper/values.yaml")" = build-abcdef1234567890 ]
+	[ "$(git -C "$repository" log -1 --format=%s)" = 'feat: update static site landscape in dev environment to image version build-abcdef1234567890' ]
+
+	first_promotion_head=$(git -C "$repository" rev-parse HEAD)
+	run_static_site_promotion build-abcdef1234567890
+	[ "$status" -eq 0 ]
+	[ "$(git -C "$repository" rev-parse HEAD)" = "$first_promotion_head" ]
+}
+
+@test "static-site-update-deploy preserves an explicit wrapper override" {
+	make_static_site_gitops_fixture custom-site/envs/stage
+	run_static_site_promotion release-2026.09 landscape custom-site/envs/stage stage
+	[ "$status" -eq 0 ]
+	[ "$(yq -er '.staticSites.image.tag' "$wrapper/values.yaml")" = release-2026.09 ]
+}
+
+@test "static-site-update-deploy requires the fixed dependency alias" {
+	make_static_site_gitops_fixture
+	yq -i '(.dependencies[] | select(.name == "static-sites")).alias = "landscape"' "$wrapper/Chart.yaml"
+	git -C "$repository" add "$wrapper/Chart.yaml"
+	git -C "$repository" commit -q -m 'change alias'
+	git -C "$repository" push -q
+
+	run_static_site_promotion build-abcdef
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"must define alias 'staticSites'"* ]]
+}
+
+@test "static-site-update-deploy rejects duplicate static-sites dependencies" {
+	make_static_site_gitops_fixture
+	yq -i '.dependencies += [{"name": "static-sites", "alias": "otherSite", "version": "1.0.0", "repository": "file://../../../static-sites"}]' "$wrapper/Chart.yaml"
+	git -C "$repository" add "$wrapper/Chart.yaml"
+	git -C "$repository" commit -q -m 'duplicate static-sites dependency'
+	git -C "$repository" push -q
+
+	run_static_site_promotion build-abcdef
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"exactly one dependency named 'static-sites'; found 2"* ]]
+}
+
+@test "static-site-update-deploy requires an existing string image tag" {
+	make_static_site_gitops_fixture
+	yq -i 'del(.staticSites.image.tag)' "$wrapper/values.yaml"
+	git -C "$repository" add "$wrapper/values.yaml"
+	git -C "$repository" commit -q -m 'remove image tag'
+	git -C "$repository" push -q
+
+	run_static_site_promotion build-abcdef
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"must contain a string at staticSites.image.tag"* ]]
+}
+
+@test "static-site-update-deploy rejects invalid container image tags" {
+	make_static_site_gitops_fixture
+	run_static_site_promotion 'build/abcdef'
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"must be a valid container image tag"* ]]
+}
+
+@test "static-site-update-deploy rejects unexpected changes produced during validation" {
+	make_static_site_gitops_fixture
+	fake_bin="$test_root/bin"
+	mkdir -p "$fake_bin"
+	printf '#!/usr/bin/env bash\ntouch "$GITHUB_WORKSPACE/repository/unexpected.txt"\n' >"$fake_bin/helm"
+	chmod +x "$fake_bin/helm"
+	export PATH="$fake_bin:$PATH"
+
+	run_static_site_promotion build-abcdef
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"changed unexpected path: unexpected.txt"* ]]
+}
+
+@test "static-site-update-deploy detects a target branch race before push" {
+	make_static_site_gitops_fixture
+	competitor="$test_root/competitor"
+	git clone -q --branch main "$bare" "$competitor"
+	git -C "$competitor" config user.name Competitor
+	git -C "$competitor" config user.email competitor@example.com
+	git -C "$competitor" config commit.gpgsign false
+	git -C "$competitor" config core.autocrlf false
+	printf 'race\n' >"$competitor/race.txt"
+	git -C "$competitor" add race.txt
+	git -C "$competitor" commit -q -m race
+	git -C "$competitor" push -q origin main
+	remote_head=$(git --git-dir="$bare" rev-parse refs/heads/main)
+
+	run_static_site_promotion build-abcdef
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"[rejected]"* || "$output" == *"fetch first"* ]]
 	[ "$(git --git-dir="$bare" rev-parse refs/heads/main)" = "$remote_head" ]
 }

@@ -1,0 +1,56 @@
+name: Static Site Update Deploy
+description: Update a static-site image tag in the personal GitOps repository or a caller-selected override
+inputs:
+  token:
+    description: Token with contents write permission for the target repository
+    required: true
+  environment:
+    description: Environment whose wrapper chart is being promoted
+    required: true
+  chart-name:
+    description: Name of the static-site wrapper chart being deployed
+    required: true
+  image-version:
+    description: Container image tag to deploy
+    required: true
+  target-repository:
+    description: GitHub owner/repository containing the wrapper chart
+    required: false
+    default: SayakMukhopadhyay/k8s-landscape-charts
+  target-ref:
+    description: Branch to update in the target repository
+    required: false
+    default: main
+  wrapper-chart-path:
+    description: Wrapper chart path; defaults to chart-name/envs/environment
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Checkout target charts repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ inputs.target-repository }}
+        ref: ${{ inputs.target-ref }}
+        path: .gitops-charts
+        fetch-depth: 0
+        fetch-tags: false
+        # Credentials are required by this action's immediate focused push.
+        persist-credentials: true # zizmor: ignore[artipacked] intentional
+        token: ${{ inputs.token }}
+    - name: Set up Helm
+      uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      with:
+        version: v4.2.4
+    - name: Update and push static-site image tag
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_CHECKOUT_PATH: .gitops-charts
+        INPUT_ENVIRONMENT: ${{ inputs.environment }}
+        INPUT_CHART_NAME: ${{ inputs.chart-name }}
+        INPUT_IMAGE_VERSION: ${{ inputs.image-version }}
+        INPUT_TARGET_REF: ${{ inputs.target-ref }}
+        INPUT_WRAPPER_CHART_PATH: ${{ inputs.wrapper-chart-path }}
+      run: 'bash "$ACTION_PATH/static-site-update-deploy.sh"'

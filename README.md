@@ -1,8 +1,8 @@
 # Personal GitHub Actions
 
-Twelve GitHub Actions for Go and npm dependencies, static-site delivery, container images, Helm charts, immutable release tags, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, API calls, and file mutation that benefit from structured code are authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
+Thirteen GitHub Actions for Go and npm dependencies, static-site delivery, container images, Helm charts, immutable release tags, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, API calls, and file mutation that benefit from structured code are authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
 
-The moving `@v1` release contains all twelve actions documented here.
+The moving `@v1` release contains all thirteen actions documented here.
 
 ## Input conventions
 
@@ -10,7 +10,7 @@ The moving `@v1` release contains all twelve actions documented here.
 - Credential inputs use generic names such as `token`, `username`, and `password`; the Pages delivery actions use `github-token` to distinguish their GitHub API credential. A token may be a GitHub token, GitHub App installation token, or narrowly scoped fallback PAT as appropriate.
 - Boolean values are lowercase `true` or `false`.
 - Dependency checkout supports Go modules and lockfile-based npm projects. Python, Java, Yarn, and protobuf generation are not included.
-- V1 targets GitHub-hosted Ubuntu runners. `chart-update-deploy` requires `yq` v4; the TypeScript-backed version and packaging actions parse YAML from their bundles.
+- V1 targets GitHub-hosted Ubuntu runners. `chart-update-deploy` and `static-site-update-deploy` require `yq` v4; the TypeScript-backed version and packaging actions parse YAML from their bundles.
 
 ## `check-version`
 
@@ -183,6 +183,23 @@ By default, the action updates `main` in `SayakMukhopadhyay/k8s-landscape-charts
 The default path deliberately follows the BeezLabs first-party convention: each environment owns a complete wrapper chart and may therefore select different dependencies or dependency versions. Existing third-party wrappers that keep `Chart.yaml` directly under `<chart-name>` do not define the first-party pipeline contract; callers targeting one of those layouts must provide `wrapper-chart-path` explicitly.
 
 The action permits only the selected `Chart.yaml`, `Chart.lock`, and dependency archives to change, stages exactly those files, rejects stale no-ops, and relies on a normal non-force push to reject races.
+
+## `static-site-update-deploy`
+
+`SayakMukhopadhyay/github-actions/static-site-update-deploy@v1` promotes a static-site container image through its environment wrapper chart.
+
+```yaml
+- uses: SayakMukhopadhyay/github-actions/static-site-update-deploy@v1
+  with:
+    token: ${{ steps.app-token.outputs.token }}
+    environment: production
+    chart-name: landscape
+    image-version: build-${{ github.sha }}
+```
+
+By default, the action updates `main` in `SayakMukhopadhyay/k8s-landscape-charts` and derives the wrapper chart path as `<chart-name>/envs/<environment>`. `target-repository`, `target-ref`, and `wrapper-chart-path` remain available for repositories whose location or layout differs.
+
+The wrapper must contain exactly one dependency named `static-sites`, aliased as `staticSites`, and its `values.yaml` must already contain a string at `staticSites.image.tag`. The action updates only that value, runs `helm lint`, stages only `values.yaml`, treats an already-current tag as a successful no-op, and relies on a normal non-force push to reject races. It never changes or downloads the fixed `static-sites` dependency.
 
 ## `release-tags`
 

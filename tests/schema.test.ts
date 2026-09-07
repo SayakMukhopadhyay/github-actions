@@ -55,6 +55,15 @@ void test('accepts valid inputs for each documented consumer action', async () =
       },
     ],
     [
+      'static-site-update-deploy',
+      {
+        token: '${{ secrets.GITHUB_TOKEN }}',
+        environment: 'production',
+        'chart-name': 'landscape',
+        'image-version': 'build-abcdef1234567890',
+      },
+    ],
+    [
       'create-release',
       {
         token: '${{ secrets.GITHUB_TOKEN }}',
