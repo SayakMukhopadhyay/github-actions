@@ -138,6 +138,39 @@ void test('container build metadata preserves empty defaults and exact optional 
   assert.equal(buildSteps[0]?.with?.['cache-to'], '${{ inputs.cache-to }}');
 });
 
+void test('Azure ACR token metadata keeps OIDC inputs, token outputs, and the immutable login pin explicit', () => {
+  const metadata = readAction('azure-acr-token');
+  assert.deepEqual(Object.keys(metadata.inputs ?? {}).sort(), [
+    'client-id',
+    'login-server',
+    'subscription-id',
+    'tenant-id',
+  ]);
+  for (const input of Object.values(metadata.inputs ?? {})) {
+    assert.equal(input.required, true);
+  }
+
+  assert.equal(metadata.outputs?.username?.value, '${{ steps.token.outputs.username }}');
+  assert.equal(metadata.outputs?.['access-token']?.value, '${{ steps.token.outputs.access-token }}');
+
+  const steps = metadata.runs?.steps ?? [];
+  assert.equal(steps.length, 2);
+  assert.equal(steps[0]?.uses, 'azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c');
+  assert.deepEqual(steps[0]?.with, {
+    'client-id': '${{ inputs.client-id }}',
+    'tenant-id': '${{ inputs.tenant-id }}',
+    'subscription-id': '${{ inputs.subscription-id }}',
+  });
+  assert.equal(steps[1]?.id, 'token');
+  assert.equal(steps[1]?.env?.INPUT_LOGIN_SERVER, '${{ inputs.login-server }}');
+  assert.match(String(steps[1]?.run), /azure-acr-token\.sh/u);
+
+  const transaction = readFileSync(path.join(root, 'azure-acr-token', 'azure-acr-token.sh'), 'utf8');
+  assert.match(transaction, /az_arguments\+=\(--suffix "\$suffix"\)/u);
+  assert.match(transaction, /printf '::add-mask::%s\\n' "\$access_token"/u);
+  assert.match(transaction, /printf 'access-token=%s\\n' "\$access_token"/u);
+});
+
 void test('checkout-dependencies supports explicit Go and npm selection with one secure checkout', () => {
   const metadata = readAction('checkout-dependencies');
   assert.equal(metadata.inputs?.['working-directory']?.default, '.');

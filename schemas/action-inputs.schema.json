@@ -16,6 +16,40 @@
               "allOf": [
                 {
                   "if": {
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/azure-acr-token@v1" } },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "client-id": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Client ID of the Azure identity configured for GitHub OIDC federation"
+                          },
+                          "tenant-id": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Tenant ID containing the Azure identity"
+                          },
+                          "subscription-id": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Subscription ID containing the Azure Container Registry"
+                          },
+                          "login-server": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Azure Container Registry login server without a scheme, path, or port"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["client-id", "tenant-id", "subscription-id", "login-server"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
                     "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/bump-version@v1" } },
                     "required": ["uses"]
                   },

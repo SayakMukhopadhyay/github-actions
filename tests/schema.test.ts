@@ -43,6 +43,15 @@ void test('accepts valid inputs for each documented consumer action', async () =
         'node-working-directory': 'website',
       },
     ],
+    [
+      'azure-acr-token',
+      {
+        'client-id': '${{ vars.AZURE_CLIENT_ID }}',
+        'tenant-id': '${{ vars.AZURE_TENANT_ID }}',
+        'subscription-id': '${{ vars.AZURE_SUBSCRIPTION_ID }}',
+        'login-server': '${{ vars.ACR_LOGIN_SERVER }}',
+      },
+    ],
     ['container-build-push', { version: '1.2.3' }],
     ['helm-package-push', {}],
     [

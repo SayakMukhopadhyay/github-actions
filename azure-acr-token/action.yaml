@@ -1,0 +1,38 @@
+name: Azure ACR Token
+description: Exchange GitHub OIDC identity for a short-lived Azure Container Registry access token
+inputs:
+  client-id:
+    description: Client ID of the Azure identity configured for GitHub OIDC federation
+    required: true
+  tenant-id:
+    description: Tenant ID containing the Azure identity
+    required: true
+  subscription-id:
+    description: Subscription ID containing the Azure Container Registry
+    required: true
+  login-server:
+    description: Azure Container Registry login server without a scheme, path, or port
+    required: true
+outputs:
+  username:
+    description: Fixed username used with an exposed Azure Container Registry access token
+    value: ${{ steps.token.outputs.username }}
+  access-token:
+    description: Masked short-lived Azure Container Registry access token
+    value: ${{ steps.token.outputs.access-token }}
+runs:
+  using: composite
+  steps:
+    - name: Log in to Azure with GitHub OIDC
+      uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+      with:
+        client-id: ${{ inputs.client-id }}
+        tenant-id: ${{ inputs.tenant-id }}
+        subscription-id: ${{ inputs.subscription-id }}
+    - name: Expose Azure Container Registry token
+      id: token
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_LOGIN_SERVER: ${{ inputs.login-server }}
+      run: 'bash "$ACTION_PATH/azure-acr-token.sh"'

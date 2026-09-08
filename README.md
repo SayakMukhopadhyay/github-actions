@@ -1,8 +1,8 @@
 # Personal GitHub Actions
 
-Thirteen GitHub Actions for Go and npm dependencies, static-site delivery, container images, Helm charts, immutable release tags, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, API calls, and file mutation that benefit from structured code are authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
+Fourteen GitHub Actions for Go and npm dependencies, Azure registry authentication, static-site delivery, container images, Helm charts, immutable release tags, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, API calls, and file mutation that benefit from structured code are authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
 
-The moving `@v1` release contains all thirteen actions documented here.
+The moving `@v1` release contains all fourteen actions documented here.
 
 ## Input conventions
 
@@ -123,6 +123,36 @@ steps:
 ```
 
 Output `page-url` is the deployed Pages URL. The consuming workflow remains responsible for validating and allowlisting dispatch payload values, selecting triggers and jobs, and defining conditions, permissions, environment, concurrency, ordering, and approval gates. This action is not a reusable workflow.
+
+## `azure-acr-token`
+
+`SayakMukhopadhyay/github-actions/azure-acr-token@v1` exchanges GitHub's OIDC identity for a short-lived Azure Container Registry access token. The consuming job must grant `id-token: write`; it retains its triggers, jobs, conditions, environments, concurrency, ordering, and approval gates.
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+
+steps:
+  - id: acr
+    uses: SayakMukhopadhyay/github-actions/azure-acr-token@v1
+    with:
+      client-id: ${{ vars.AZURE_CLIENT_ID }}
+      tenant-id: ${{ vars.AZURE_TENANT_ID }}
+      subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      login-server: ${{ vars.ACR_LOGIN_SERVER }}
+
+  - uses: SayakMukhopadhyay/github-actions/container-build-push@v1
+    with:
+      registry: ${{ vars.ACR_LOGIN_SERVER }}
+      image-repository: andromeda/docs
+      username: ${{ steps.acr.outputs.username }}
+      password: ${{ steps.acr.outputs.access-token }}
+```
+
+`login-server` is the single registry authority. It accepts a conventional host such as `greybodygames.azurecr.io` or a DNL-protected host such as `greybodygames-bkf5agemepdabtg3.azurecr.io`, but rejects schemes, paths, ports, whitespace, and malformed hosts. The action normalizes the host, derives the Azure registry resource name and optional DNL suffix, and calls Azure CLI's suffix-aware `az acr login --expose-token` route without requiring registry configuration-reader access.
+
+Output `username` is the ACR token username `00000000-0000-0000-0000-000000000000`. Output `access-token` is the masked short-lived token. The action never prints the token as ordinary output and fails before publishing outputs if Azure CLI returns an empty token. Client, tenant, and subscription IDs are identifiers; callers should provide them through repository or environment variables and keep workflow permissions narrowly scoped.
 
 ## `container-build-push`
 
