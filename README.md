@@ -1,8 +1,8 @@
 # Personal GitHub Actions
 
-Fourteen GitHub Actions for Go and npm dependencies, Azure registry authentication, static-site delivery, container images, Helm charts, immutable release tags, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, API calls, and file mutation that benefit from structured code are authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
+Fifteen GitHub Actions for Go and npm dependencies, Azure registry authentication, static-site delivery, container images, Helm charts, immutable release tags, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, API calls, and file mutation that benefit from structured code are authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
 
-The moving `@v1` release contains all fourteen actions documented here.
+The moving `@v1` release contains all fifteen actions documented here.
 
 ## Input conventions
 
@@ -156,22 +156,24 @@ Output `username` is the ACR token username `00000000-0000-0000-0000-00000000000
 
 ## `container-build-push`
 
-`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes `registry/image-repository[/component]:version`. It preserves the reference action's component and additional-build-context behavior, forwards optional multiline `build-args`, `cache-from`, and `cache-to` inputs unchanged to Docker Buildx, and passes the existing optional `auth-token` input to BuildKit safely. The action does not select or configure a cache backend; both cache inputs default to empty, preserving the behavior of callers that do not opt in.
+`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes exactly one reference, `registry/image-repository[/component]:version`. It forwards optional multiline `build-args`, `build-contexts`, `cache-from`, and `cache-to` inputs unchanged to Docker Buildx and passes the optional `auth-token` input to BuildKit safely.
 
 ```yaml
-- uses: SayakMukhopadhyay/github-actions/container-build-push@v1
+- id: image
+  uses: SayakMukhopadhyay/github-actions/container-build-push@v1
   with:
-    version: ${{ env.VERSION }}
+    version: build-${{ github.sha }}
     registry: ghcr.io
     image-repository: ${{ github.repository }}
     working-directory: .
     build-args: |
       VERSION=${{ env.VERSION }}
       COMMIT=${{ github.sha }}
-    push: 'false'
+    username: ${{ github.actor }}
+    password: ${{ github.token }}
 ```
 
-In this example, the caller obtains `VERSION` from its authoritative root `VERSION` file; `COMMIT` is the current GitHub SHA. These build arguments can populate application linker metadata, while the action independently supplies dynamic OCI `created`, `version`, `revision`, and `source` labels. Build arguments are not secrets: use `auth-token` for the supported BuildKit secret and never put credentials in `build-args`.
+Outputs are the single normalized `image-reference` and the Buildx `image-digest`. When `push: 'false'`, the build still runs and `image-digest` is empty. Build arguments are not secrets: use `auth-token` for the supported BuildKit secret and never put credentials in `build-args`.
 
 Callers can independently select any Buildx-supported external cache backend. For example, two source-only builds can share content-addressed layers through GitHub Actions cache without sharing generated files or workflow artifacts:
 
@@ -183,6 +185,30 @@ cache-to: type=gha,mode=max,scope=docs
 Both inputs also accept Docker Buildx's newline-delimited form for multiple cache entries. Values are forwarded verbatim; backend choice, scope naming, export mode, and required workflow permissions remain the caller's responsibility.
 
 For publication, provide `username` and `password` (the password may be `github.token`). GHCR requires `packages: write`.
+
+## `container-promote`
+
+`SayakMukhopadhyay/github-actions/container-promote@v1` creates one target tag for an already-published image. It constructs `registry/image-repository[/component]@source-digest` and asks Docker Buildx to create `registry/image-repository[/component]:tag` directly from that registry digest. It does not pull or rebuild the image, inspect existing tags, enforce immutability, or verify the result after the registry command succeeds.
+
+```yaml
+- uses: SayakMukhopadhyay/github-actions/container-promote@v1
+  with:
+    source-digest: ${{ needs.publish.outputs.image-digest }}
+    tag: v${{ needs.version.outputs.application-version }}
+    registry: ghcr.io
+    image-repository: ${{ github.repository }}
+    username: ${{ github.actor }}
+    password: ${{ github.token }}
+```
+
+The intended delivery sequence is:
+
+1. `container-build-push` publishes `build-<full SHA>` and returns its digest.
+2. Development deploys that build tag and completes its health check.
+3. `container-promote` creates `v<VERSION>` from the proven digest.
+4. Production deploys the version tag and completes its health check.
+
+Registry authentication failures, rejected tag writes, and other Docker command failures fail the action normally. Registry-side configuration owns tag immutability. GHCR promotion requires `packages: write`; no OIDC permission is requested by either container action.
 
 ## `helm-package-push`
 

@@ -315,6 +315,57 @@
                 },
                 {
                   "if": {
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/container-promote@v1" } },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "source-digest": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Published sha256 image digest to promote"
+                          },
+                          "tag": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Target container tag to create"
+                          },
+                          "component": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional component appended to the image repository",
+                            "default": ""
+                          },
+                          "username": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Registry username",
+                            "default": ""
+                          },
+                          "password": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Registry password or token",
+                            "default": ""
+                          },
+                          "registry": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Container registry host",
+                            "default": "ghcr.io"
+                          },
+                          "image-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Image repository below the registry; defaults to github.repository",
+                            "default": ""
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["source-digest", "tag"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
                     "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/create-release@v1" } },
                     "required": ["uses"]
                   },

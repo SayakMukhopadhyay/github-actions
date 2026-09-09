@@ -52,7 +52,14 @@ void test('accepts valid inputs for each documented consumer action', async () =
         'login-server': '${{ vars.ACR_LOGIN_SERVER }}',
       },
     ],
-    ['container-build-push', { version: '1.2.3' }],
+    ['container-build-push', { version: 'build-abcdef' }],
+    [
+      'container-promote',
+      {
+        'source-digest': 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        tag: 'v1.2.3',
+      },
+    ],
     ['helm-package-push', {}],
     [
       'chart-update-deploy',

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+printf '%s\n' "$*" >> "${MOCK_DOCKER_LOG:?MOCK_DOCKER_LOG is required}"
+exit "${MOCK_DOCKER_STATUS:-0}"

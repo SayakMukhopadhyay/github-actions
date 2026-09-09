@@ -19,6 +19,7 @@ interface ActionStep {
   env?: Record<string, unknown>;
   id?: unknown;
   if?: unknown;
+  name?: unknown;
   run?: unknown;
   shell?: unknown;
   uses?: unknown;
@@ -121,7 +122,7 @@ void test('consumer action metadata is complete and uses safe runtime boundaries
   }
 });
 
-void test('container build metadata preserves empty defaults and exact optional forwarding', () => {
+void test('container build metadata keeps one version tag, exact forwarding, and push-only digest output', () => {
   const metadata = readAction('container-build-push');
   for (const input of ['build-contexts', 'build-args', 'cache-from', 'cache-to']) {
     assert.equal(metadata.inputs?.[input]?.required, false, `${input} is optional`);
@@ -136,6 +137,46 @@ void test('container build metadata preserves empty defaults and exact optional 
   assert.equal(buildSteps[0]?.with?.['build-args'], '${{ inputs.build-args }}');
   assert.equal(buildSteps[0]?.with?.['cache-from'], '${{ inputs.cache-from }}');
   assert.equal(buildSteps[0]?.with?.['cache-to'], '${{ inputs.cache-to }}');
+  assert.equal(buildSteps[0]?.with?.tags, '${{ steps.prepare.outputs.image-reference }}');
+
+  assert.equal(metadata.inputs?.version?.required, true);
+  assert.equal('mode' in (metadata.inputs ?? {}), false);
+  assert.equal('tags' in (metadata.inputs ?? {}), false);
+  assert.equal('source-reference' in (metadata.inputs ?? {}), false);
+  assert.equal(metadata.outputs?.['image-reference']?.value, '${{ steps.prepare.outputs.image-reference }}');
+  assert.equal(
+    metadata.outputs?.['image-digest']?.value,
+    "${{ inputs.push == 'true' && steps.build.outputs.digest || '' }}",
+  );
+  assert.deepEqual(Object.keys(metadata.outputs ?? {}).sort(), ['image-digest', 'image-reference']);
+});
+
+void test('container promotion metadata performs one direct digest-to-tag operation', () => {
+  const metadata = readAction('container-promote');
+  assert.equal(metadata.inputs?.['source-digest']?.required, true);
+  assert.equal(metadata.inputs?.tag?.required, true);
+  assert.deepEqual(Object.keys(metadata.inputs ?? {}).sort(), [
+    'component',
+    'image-repository',
+    'password',
+    'registry',
+    'source-digest',
+    'tag',
+    'username',
+  ]);
+
+  const steps = metadata.runs?.steps ?? [];
+  assert.equal(
+    steps.some((step) => String(step.uses).startsWith('docker/build-push-action@')),
+    false,
+  );
+  assert.equal(
+    steps.some((step) => String(step.uses).startsWith('actions/checkout@')),
+    false,
+  );
+  const command = steps.find((step) => step.name === 'Create target image tag')?.run;
+  assert.match(String(command), /docker buildx imagetools create --prefer-index=false/u);
+  assert.doesNotMatch(String(command), /imagetools inspect|docker pull|docker (?:image )?build(?: |$)/u);
 });
 
 void test('Azure ACR token metadata keeps OIDC inputs, token outputs, and the immutable login pin explicit', () => {
@@ -279,12 +320,18 @@ void test('release-tags fixes the target and keeps Git credentials ephemeral', (
   assert.doesNotMatch(transaction, /git tag/u);
 });
 
-void test('CI exercises multiline container build and external cache inputs through the consumer action', () => {
+void test('CI exercises one container tag and multiline build inputs through the consumer action', () => {
   const workflow = readYaml<WorkflowMetadata>(path.join(root, '.github', 'workflows', 'ci.yaml'));
   const steps = workflow.jobs?.['action-level']?.steps ?? [];
   const fixtures = steps.filter((step) => step.uses === '$/container-build-push');
   assert.equal(fixtures.length, 1);
+  assert.equal(
+    fixtures[0]?.with?.['build-contexts'],
+    'fixture=tests/fixtures/go-chart\nsecondary=tests/fixtures/go-chart\n',
+  );
   assert.equal(fixtures[0]?.with?.['build-args'], 'VERSION=fixture-version\nCOMMIT=fixture-commit\n');
   assert.equal(fixtures[0]?.with?.['cache-from'], 'type=gha,scope=github-actions-container-fixture\n');
   assert.equal(fixtures[0]?.with?.['cache-to'], 'type=gha,mode=max,scope=github-actions-container-fixture\n');
+  assert.equal(fixtures[0]?.with?.version, 'ci');
+  assert.equal('tags' in (fixtures[0]?.with ?? {}), false);
 });
