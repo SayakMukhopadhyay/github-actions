@@ -21,6 +21,7 @@ export interface VerifiedDownloadOptions {
 export async function writeVerifiedDownload(options: VerifiedDownloadOptions): Promise<void> {
   const fetchImplementation = options.fetchImplementation ?? fetch;
   const response = await fetchImplementation(options.url, { redirect: 'follow' });
+
   if (!response.ok || response.body === null) {
     throw new Error(`Argo CD CLI download failed with HTTP ${String(response.status)}`);
   }
@@ -33,9 +34,12 @@ export async function writeVerifiedDownload(options: VerifiedDownloadOptions): P
       callback(null, chunk);
     },
   });
+
   try {
     await pipeline(response.body, hashingStream, createWriteStream(temporary, { flags: 'wx', mode: 0o700 }));
+
     const actualSha256 = hash.digest('hex');
+
     if (actualSha256 !== options.expectedSha256) {
       throw new Error(`Argo CD CLI checksum mismatch: expected ${options.expectedSha256}, received ${actualSha256}`);
     }
@@ -59,12 +63,14 @@ export async function installArgocd(runnerTemp: string): Promise<string> {
 
   const directory = path.join(runnerTemp, 'argocd-verify-deployment');
   const destination = path.join(directory, `argocd-${ARGOCD_VERSION}-linux-amd64`);
+
   await mkdir(directory, { recursive: true });
   await writeVerifiedDownload({
     destination,
     expectedSha256: ARGOCD_LINUX_AMD64_SHA256,
     url: ARGOCD_LINUX_AMD64_URL,
   });
+
   return destination;
 }
 

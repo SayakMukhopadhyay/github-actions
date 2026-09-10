@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test, type TestContext } from 'node:test';
 import * as ts from 'typescript';
-import { incrementVersion, mutateVersions } from '../actions/bump-version/bump-version.ts';
+import { mutateVersions } from '../actions/bump-version/src/mutation.ts';
+import { incrementVersion } from '../actions/bump-version/src/semantic-version.ts';
 import { matchChangedFiles, parseChangedPaths } from '../actions/is-file-changed/is-file-changed.ts';
 import { checkVersion, readCanonicalVersion } from '../check-version/check-version.ts';
 
@@ -19,6 +20,7 @@ afterEach(() => {
 function temporaryDirectory(): string {
   const directory = mkdtempSync(join(tmpdir(), 'github-actions-core-'));
   temporaryDirectories.push(directory);
+
   return directory;
 }
 
@@ -40,19 +42,24 @@ function writeChart(
 function writeChangedFiles(...records: string[]): string {
   const file = join(temporaryDirectory(), 'changed-files');
   writeFileSync(file, Buffer.from(`${records.join('\0')}\0`, 'utf8'));
+
   return file;
 }
 
 function createFileSymlinkOrSkip(context: TestContext, target: string, path: string): boolean {
   try {
     symlinkSync(target, path, 'file');
+
     return true;
   } catch (error) {
     const code = error instanceof Error && 'code' in error ? error.code : undefined;
+
     if (code === 'EPERM' || code === 'EACCES' || code === 'ENOTSUP') {
       context.skip(`file symlinks are unavailable on this platform (${String(code)})`);
+
       return false;
     }
+
     throw error;
   }
 }
@@ -71,6 +78,7 @@ function importedModule(node: ts.Node): string | undefined {
   if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
     return node.moduleSpecifier.text;
   }
+
   if (
     ts.isImportEqualsDeclaration(node) &&
     ts.isExternalModuleReference(node.moduleReference) &&
@@ -79,6 +87,7 @@ function importedModule(node: ts.Node): string | undefined {
   ) {
     return node.moduleReference.expression.text;
   }
+
   if (
     ts.isCallExpression(node) &&
     node.arguments.length === 1 &&
@@ -88,6 +97,7 @@ function importedModule(node: ts.Node): string | undefined {
   ) {
     return node.arguments[0].text;
   }
+
   return undefined;
 }
 
@@ -115,11 +125,14 @@ void test('TypeScript sources never import command-execution modules', () => {
       );
       const visit = (node: ts.Node): void => {
         const moduleName = importedModule(node);
+
         if (moduleName !== undefined && forbiddenModules.has(moduleName)) {
           violations.push(`${file}: imports ${moduleName}`);
         }
+
         ts.forEachChild(node, visit);
       };
+
       visit(source);
     }
   }
@@ -140,12 +153,14 @@ void test('check-version rejects noncanonical, multiline, escaping, and mismatch
   const repository = join(root, 'repository');
   mkdirSync(repository);
   writeFileSync(join(repository, 'VERSION'), '1.2.3-rc.1\n');
+
   assert.throws(
     () => readCanonicalVersion(join(repository, 'VERSION'), 'application version'),
     /canonical MAJOR\.MINOR\.PATCH/,
   );
 
   writeFileSync(join(repository, 'VERSION'), '1.2.3\n\n');
+
   assert.throws(() => readCanonicalVersion(join(repository, 'VERSION'), 'application version'), /exactly one line/);
   assert.throws(
     () => checkVersion({ workspace: repository, workingDirectory: '..', helm: false }),
@@ -157,6 +172,7 @@ void test('check-version rejects noncanonical, multiline, escaping, and mismatch
     join(repository, 'charts', 'Chart.yaml'),
     'apiVersion: v2\nname: fixture\nversion: 0.5.0\nappVersion: "release candidate 7"\n',
   );
+
   assert.throws(
     () => checkVersion({ workspace: repository, workingDirectory: '.', helm: true }),
     /field version mismatch.*expected '0\.4\.0', got '0\.5\.0'/,
@@ -170,6 +186,7 @@ void test('check-version requires Chart.yaml.appVersion to exist as a scalar', (
     join(repository, 'charts', 'Chart.yaml'),
     'apiVersion: v2\nname: fixture\nversion: 0.4.0\nappVersion:\n  channel: stable\n',
   );
+
   assert.throws(
     () => checkVersion({ workspace: repository, workingDirectory: '.', helm: true }),
     /could not read .*Chart\.yaml field appVersion/,
@@ -182,6 +199,7 @@ void test('check-version rejects authority files that are symlinks', (context) =
   const externalVersion = join(root, 'external-version');
   mkdirSync(repository);
   writeFileSync(externalVersion, '1.2.3\n');
+
   if (!createFileSymlinkOrSkip(context, externalVersion, join(repository, 'VERSION'))) {
     return;
   }
@@ -211,6 +229,7 @@ void test('bump-version combined selection mutates all authorities while preserv
     helm: true,
     go: true,
   });
+
   assert.deepEqual(result, { applicationVersion: '1.2.4', chartVersion: '0.4.1' });
   assert.equal(readFileSync(join(repository, 'VERSION'), 'utf8'), '1.2.4\n');
   assert.equal(readFileSync(join(repository, 'charts', 'VERSION'), 'utf8'), '0.4.1\n');
@@ -223,6 +242,7 @@ void test('bump-version combined selection mutates all authorities while preserv
 void test('bump-version chart-only selection synchronizes appVersion to the current application authority', () => {
   const helmOnly = temporaryDirectory();
   writeChart(helmOnly, '1.2.3', '0.4.0', '9.9.9');
+
   assert.deepEqual(
     mutateVersions({
       workspace: helmOnly,
@@ -248,6 +268,7 @@ void test('bump-version application-only selection mutates only the root authori
   const goOnly = temporaryDirectory();
   writeChart(goOnly, '1.2.3', '0.4.0', '9.9.9');
   const originalChart = readFileSync(join(goOnly, 'charts', 'Chart.yaml'), 'utf8');
+
   assert.deepEqual(
     mutateVersions({
       workspace: goOnly,
@@ -286,6 +307,7 @@ void test('bump-version does not write through a symlinked authority file', (con
   writeChart(repository);
   writeFileSync(externalVersion, '1.2.3\n');
   rmSync(join(repository, 'VERSION'));
+
   if (!createFileSymlinkOrSkip(context, externalVersion, join(repository, 'VERSION'))) {
     return;
   }
@@ -306,6 +328,7 @@ void test('bump-version does not write through a symlinked authority file', (con
 
 void test('is-file-changed parses ordinary, rename, and copy records', () => {
   const contents = Buffer.from('M\0VERSION\0R100\0old name.txt\0new name.txt\0C100\0source.txt\0copy.txt\0', 'utf8');
+
   assert.deepEqual(parseChangedPaths(contents), ['VERSION', 'old name.txt', 'new name.txt', 'source.txt', 'copy.txt']);
   assert.throws(() => parseChangedPaths(Buffer.from('R100\0old.txt\0', 'utf8')), /truncated Git rename\/copy record/);
 });
@@ -320,6 +343,7 @@ void test('is-file-changed uses JavaScript RegExp against every changed path', (
     'D',
     'deleted.txt',
   );
+
   assert.equal(matchChangedFiles('^VERSION$', changedFiles), true);
   assert.equal(matchChangedFiles('^old name\\.txt$', changedFiles), true);
   assert.equal(matchChangedFiles('^new name;\\$\\(safe\\)\\.txt$', changedFiles), true);

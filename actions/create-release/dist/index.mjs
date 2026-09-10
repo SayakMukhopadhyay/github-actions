@@ -33,6 +33,51 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 	enumerable: true
 }) : target, mod));
 //#endregion
+//#region actions/create-release/src/contracts.ts
+var SafeActionFailure = class extends Error {
+	diagnostic;
+	constructor(diagnostic) {
+		super("create-release failed");
+		this.name = "SafeActionFailure";
+		this.diagnostic = diagnostic;
+	}
+};
+function fail(diagnostic) {
+	throw new SafeActionFailure(diagnostic);
+}
+//#endregion
+//#region actions/create-release/src/files.ts
+async function checkedInputFile(path, runnerTemp, maximumBytes) {
+	const inputStats = await lstat(path);
+	if (!inputStats.isFile() || inputStats.isSymbolicLink()) throw new Error("release handoff file must be a regular non-symbolic file");
+	const canonicalRunnerTemp = await realpath(runnerTemp);
+	const canonicalPath = await realpath(path);
+	const pathFromRunnerTemp = relative(canonicalRunnerTemp, canonicalPath);
+	if (pathFromRunnerTemp === "" || pathFromRunnerTemp.startsWith("..") || resolve(canonicalRunnerTemp, pathFromRunnerTemp) !== canonicalPath) throw new Error("release handoff file is outside RUNNER_TEMP");
+	if (inputStats.size > maximumBytes) throw new Error("release handoff file is invalid or too large");
+	return canonicalPath;
+}
+async function validateInputFile(role, path, runnerTemp, maximumBytes) {
+	try {
+		return await checkedInputFile(path, runnerTemp, maximumBytes);
+	} catch {
+		fail({
+			category: "input-file-validation",
+			reason: role
+		});
+	}
+}
+async function readInputFile(role, path) {
+	try {
+		return await readFile(path, "utf8");
+	} catch {
+		fail({
+			category: "input-file-validation",
+			reason: role
+		});
+	}
+}
+//#endregion
 //#region node_modules/openai/internal/tslib.mjs
 function __classPrivateFieldSet(receiver, state, value, kind, f) {
 	if (kind === "m") throw new TypeError("Private method is not writable");
@@ -15248,15 +15293,93 @@ function isUndiciDispatcherVersionMismatchError(error) {
 	return false;
 }
 //#endregion
-//#region actions/create-release/create-release.ts
-const MODEL = "gpt-5.6-luna";
-const MAX_CONTEXT_BYTES = 6e4;
-const MAX_FACTS_BYTES = 512e3;
-const MAX_BODY_BYTES = 12e4;
+//#region actions/create-release/src/validation.ts
 const MAX_RENDERED_COMMITS = 48;
 const MAX_REPOSITORY_LENGTH = 256;
 const MAX_SERVER_URL_LENGTH = 255;
 const MAX_TAG_NAME_LENGTH = 255;
+const unsafeGeneratedText = /https?:\/\/|www\.|\[[^\]]+\]\([^)]*\)|<[^>]+>|`|(^|[^\p{L}\p{N}_])v?\d+\.\d+\.\d+([^\p{L}\p{N}_]|$)|\b[0-9a-f]{7,64}\b|(^|\s)[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.:/-]+|(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu;
+function isRecord$1(value) {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function codePointLength(value) {
+	return [...value].length;
+}
+function isSafeLine(value, maximumLength) {
+	if (typeof value !== "string" || value.length === 0 || codePointLength(value) > maximumLength) return false;
+	for (const character of value) {
+		const codePoint = character.codePointAt(0);
+		if (codePoint === void 0 || codePoint < 32 || codePoint === 127) return false;
+	}
+	return true;
+}
+function assertExactKeys(value, expected) {
+	const actual = Object.keys(value).sort();
+	const wanted = [...expected].sort();
+	if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) throw new Error("object contains unexpected fields");
+}
+function validateGeneratedNotes(value) {
+	if (!isRecord$1(value)) throw new Error("release notes must be an object");
+	assertExactKeys(value, ["description", "highlights"]);
+	if (!isSafeLine(value.description, 1200)) throw new Error("release description is invalid");
+	if (!Array.isArray(value.highlights) || value.highlights.length < 1 || value.highlights.length > 6) throw new Error("release highlights are invalid");
+	if (!value.highlights.every((highlight) => isSafeLine(highlight, 240))) throw new Error("release highlight is invalid");
+	if (unsafeGeneratedText.test([value.description, ...value.highlights].join("\n"))) throw new Error("release notes contain disallowed non-descriptive content");
+	return {
+		description: value.description,
+		highlights: value.highlights
+	};
+}
+function validateReleaseFacts(value) {
+	if (!isRecord$1(value)) throw new Error("release facts must be an object");
+	assertExactKeys(value, [
+		"schemaVersion",
+		"repository",
+		"serverUrl",
+		"tagName",
+		"targetObject",
+		"targetCommit",
+		"previousTag",
+		"previousObject",
+		"commits",
+		"omittedCommitCount"
+	]);
+	if (value.schemaVersion !== 1) throw new Error("unsupported release facts version");
+	if (typeof value.repository !== "string" || codePointLength(value.repository) > MAX_REPOSITORY_LENGTH || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value.repository)) throw new Error("invalid repository in release facts");
+	if (typeof value.serverUrl !== "string" || codePointLength(value.serverUrl) > MAX_SERVER_URL_LENGTH || !/^https:\/\/[A-Za-z0-9.-]+(?::\d+)?$/.test(value.serverUrl)) throw new Error("invalid server URL in release facts");
+	if (typeof value.tagName !== "string" || value.tagName.length === 0 || codePointLength(value.tagName) > MAX_TAG_NAME_LENGTH || /[\r\n]/u.test(value.tagName)) throw new Error("invalid tag in release facts");
+	if (typeof value.targetObject !== "string" || !/^[0-9a-f]{40,64}$/iu.test(value.targetObject)) throw new Error("invalid tag object in release facts");
+	if (typeof value.targetCommit !== "string" || !/^[0-9a-f]{40,64}$/iu.test(value.targetCommit)) throw new Error("invalid target commit in release facts");
+	if (value.previousTag !== null && (typeof value.previousTag !== "string" || value.previousTag.length === 0 || codePointLength(value.previousTag) > MAX_TAG_NAME_LENGTH || /[\r\n]/u.test(value.previousTag))) throw new Error("invalid previous tag in release facts");
+	if (value.previousTag === null && value.previousObject !== null || value.previousTag !== null && (typeof value.previousObject !== "string" || !/^[0-9a-f]{40,64}$/iu.test(value.previousObject))) throw new Error("invalid previous tag object in release facts");
+	if (typeof value.omittedCommitCount !== "number" || !Number.isSafeInteger(value.omittedCommitCount) || value.omittedCommitCount < 0) throw new Error("invalid omitted commit count in release facts");
+	if (!Array.isArray(value.commits) || value.commits.length > MAX_RENDERED_COMMITS) throw new Error("invalid commit list in release facts");
+	const commits = value.commits.map((candidate) => {
+		if (!isRecord$1(candidate)) throw new Error("invalid commit entry in release facts");
+		assertExactKeys(candidate, ["sha", "subject"]);
+		if (typeof candidate.sha !== "string" || !/^[0-9a-f]{40,64}$/iu.test(candidate.sha)) throw new Error("invalid commit ID in release facts");
+		if (!isSafeLine(candidate.subject, 240)) throw new Error("invalid commit subject in release facts");
+		return {
+			sha: candidate.sha,
+			subject: candidate.subject
+		};
+	});
+	return {
+		schemaVersion: 1,
+		repository: value.repository,
+		serverUrl: value.serverUrl,
+		tagName: value.tagName,
+		targetObject: value.targetObject,
+		targetCommit: value.targetCommit,
+		previousTag: value.previousTag,
+		previousObject: value.previousObject,
+		commits,
+		omittedCommitCount: value.omittedCommitCount
+	};
+}
+//#endregion
+//#region actions/create-release/src/openai.ts
+const MODEL = "gpt-5.6-luna";
 const RESPONSE_SCHEMA = {
 	type: "object",
 	properties: {
@@ -15288,148 +15411,11 @@ const INSTRUCTIONS = [
 	"Do not emit Markdown, URLs, links, tag names, version numbers, commit identifiers, file paths, package or image coordinates, or artifact references.",
 	"Do not invent facts."
 ].join(" ");
-const unsafeGeneratedText = /https?:\/\/|www\.|\[[^\]]+\]\([^)]*\)|<[^>]+>|`|(^|[^\p{L}\p{N}_])v?\d+\.\d+\.\d+([^\p{L}\p{N}_]|$)|\b[0-9a-f]{7,64}\b|(^|\s)[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.:/-]+|(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu;
-var SafeActionFailure = class extends Error {
-	diagnostic;
-	constructor(diagnostic) {
-		super("create-release failed");
-		this.name = "SafeActionFailure";
-		this.diagnostic = diagnostic;
-	}
-};
-function fail(diagnostic) {
-	throw new SafeActionFailure(diagnostic);
-}
-function getActionInput(name) {
-	const environmentName = `INPUT_${name.replaceAll(" ", "_").toUpperCase()}`;
-	const value = process.env[environmentName]?.trim() ?? "";
-	if (value === "") fail({
-		category: "input-validation",
-		reason: "missing-required-input",
-		input: name
-	});
-	return value;
-}
-function formatFailure(error, fallbackCategory) {
-	const diagnostic = error instanceof SafeActionFailure ? error.diagnostic : {
-		category: fallbackCategory,
-		reason: "operation-failed"
-	};
-	const input = "input" in diagnostic ? ` input=${diagnostic.input}` : "";
-	return `create-release: failed: category=${diagnostic.category} reason=${diagnostic.reason}${input}\n`;
-}
 function isRecord(value) {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function isUnknownArray(value) {
 	return Array.isArray(value);
-}
-function codePointLength(value) {
-	return [...value].length;
-}
-function isSafeLine(value, maximumLength) {
-	if (typeof value !== "string" || value.length === 0 || codePointLength(value) > maximumLength) return false;
-	for (const character of value) {
-		const codePoint = character.codePointAt(0);
-		if (codePoint === void 0 || codePoint < 32 || codePoint === 127) return false;
-	}
-	return true;
-}
-function assertExactKeys(value, expected) {
-	const actual = Object.keys(value).sort();
-	const wanted = [...expected].sort();
-	if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) throw new Error("object contains unexpected fields");
-}
-function validateGeneratedNotes(value) {
-	if (!isRecord(value)) throw new Error("release notes must be an object");
-	assertExactKeys(value, ["description", "highlights"]);
-	if (!isSafeLine(value.description, 1200)) throw new Error("release description is invalid");
-	if (!Array.isArray(value.highlights) || value.highlights.length < 1 || value.highlights.length > 6) throw new Error("release highlights are invalid");
-	if (!value.highlights.every((highlight) => isSafeLine(highlight, 240))) throw new Error("release highlight is invalid");
-	const generatedText = [value.description, ...value.highlights].join("\n");
-	if (unsafeGeneratedText.test(generatedText)) throw new Error("release notes contain disallowed non-descriptive content");
-	return {
-		description: value.description,
-		highlights: value.highlights
-	};
-}
-function validateReleaseFacts(value) {
-	if (!isRecord(value)) throw new Error("release facts must be an object");
-	assertExactKeys(value, [
-		"schemaVersion",
-		"repository",
-		"serverUrl",
-		"tagName",
-		"targetObject",
-		"targetCommit",
-		"previousTag",
-		"previousObject",
-		"commits",
-		"omittedCommitCount"
-	]);
-	if (value.schemaVersion !== 1) throw new Error("unsupported release facts version");
-	if (typeof value.repository !== "string" || codePointLength(value.repository) > MAX_REPOSITORY_LENGTH || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value.repository)) throw new Error("invalid repository in release facts");
-	if (typeof value.serverUrl !== "string" || codePointLength(value.serverUrl) > MAX_SERVER_URL_LENGTH || !/^https:\/\/[A-Za-z0-9.-]+(?::\d+)?$/.test(value.serverUrl)) throw new Error("invalid server URL in release facts");
-	if (typeof value.tagName !== "string" || value.tagName.length === 0 || codePointLength(value.tagName) > MAX_TAG_NAME_LENGTH || /[\r\n]/u.test(value.tagName)) throw new Error("invalid tag in release facts");
-	if (typeof value.targetObject !== "string" || !/^[0-9a-f]{40,64}$/iu.test(value.targetObject)) throw new Error("invalid tag object in release facts");
-	if (typeof value.targetCommit !== "string" || !/^[0-9a-f]{40,64}$/iu.test(value.targetCommit)) throw new Error("invalid target commit in release facts");
-	if (value.previousTag !== null && (typeof value.previousTag !== "string" || value.previousTag.length === 0 || codePointLength(value.previousTag) > MAX_TAG_NAME_LENGTH || /[\r\n]/u.test(value.previousTag))) throw new Error("invalid previous tag in release facts");
-	if (value.previousTag === null && value.previousObject !== null || value.previousTag !== null && (typeof value.previousObject !== "string" || !/^[0-9a-f]{40,64}$/iu.test(value.previousObject))) throw new Error("invalid previous tag object in release facts");
-	if (typeof value.omittedCommitCount !== "number" || !Number.isSafeInteger(value.omittedCommitCount) || value.omittedCommitCount < 0) throw new Error("invalid omitted commit count in release facts");
-	if (!Array.isArray(value.commits) || value.commits.length > MAX_RENDERED_COMMITS) throw new Error("invalid commit list in release facts");
-	const commits = value.commits.map((candidate) => {
-		if (!isRecord(candidate)) throw new Error("invalid commit entry in release facts");
-		assertExactKeys(candidate, ["sha", "subject"]);
-		if (typeof candidate.sha !== "string" || !/^[0-9a-f]{40,64}$/iu.test(candidate.sha)) throw new Error("invalid commit ID in release facts");
-		if (!isSafeLine(candidate.subject, 240)) throw new Error("invalid commit subject in release facts");
-		return {
-			sha: candidate.sha,
-			subject: candidate.subject
-		};
-	});
-	return {
-		schemaVersion: 1,
-		repository: value.repository,
-		serverUrl: value.serverUrl,
-		tagName: value.tagName,
-		targetObject: value.targetObject,
-		targetCommit: value.targetCommit,
-		previousTag: value.previousTag,
-		previousObject: value.previousObject,
-		commits,
-		omittedCommitCount: value.omittedCommitCount
-	};
-}
-function markdownEscape(value) {
-	return value.replaceAll("\r", " ").replaceAll("\n", " ").replace(/[&@\\`*_[\]()#!<>|]/gu, (character) => {
-		if (character === "&") return "&amp;";
-		if (character === "@") return "&#64;";
-		return `\\${character}`;
-	});
-}
-function renderReleaseBody(notes, facts) {
-	const lines = [
-		markdownEscape(notes.description),
-		"",
-		"## Highlights",
-		""
-	];
-	for (const highlight of notes.highlights) lines.push(`- ${markdownEscape(highlight)}`);
-	lines.push("", "## Commits", "");
-	if (facts.omittedCommitCount > 0) lines.push(`_${facts.omittedCommitCount} earlier mainline commits omitted for length._`, "");
-	if (facts.commits.length === 0) lines.push("_No mainline commits are present in this tag range._");
-	else for (const commit of facts.commits) {
-		const commitUrl = `${facts.serverUrl}/${facts.repository}/commit/${commit.sha}`;
-		lines.push(`- [\`${commit.sha.slice(0, 7)}\`](${commitUrl}) ${markdownEscape(commit.subject)}`);
-	}
-	lines.push("", "## Full changelog", "");
-	const encodedTag = encodeURIComponent(facts.tagName);
-	if (facts.previousTag === null) lines.push(`[View the initial release source at ${markdownEscape(facts.tagName)}](${facts.serverUrl}/${facts.repository}/tree/${encodedTag})`);
-	else {
-		const encodedPreviousTag = encodeURIComponent(facts.previousTag);
-		lines.push(`[Compare ${markdownEscape(facts.previousTag)}...${markdownEscape(facts.tagName)}](${facts.serverUrl}/${facts.repository}/compare/${encodedPreviousTag}...${encodedTag})`);
-	}
-	return `${lines.join("\n")}\n`;
 }
 function extractOutputText(response) {
 	if (!isRecord(response) || response.status !== "completed" || !isUnknownArray(response.output)) throw new Error("OpenAI response is incomplete or malformed");
@@ -15473,35 +15459,49 @@ async function generateNotes(context, apiKey, clientFactory = (key) => {
 	}
 	return validateGeneratedNotes(parsed);
 }
-async function checkedInputFile(path, runnerTemp, maximumBytes) {
-	const inputStats = await lstat(path);
-	if (!inputStats.isFile() || inputStats.isSymbolicLink()) throw new Error("release handoff file must be a regular non-symbolic file");
-	const canonicalRunnerTemp = await realpath(runnerTemp);
-	const canonicalPath = await realpath(path);
-	const pathFromRunnerTemp = relative(canonicalRunnerTemp, canonicalPath);
-	if (pathFromRunnerTemp === "" || pathFromRunnerTemp.startsWith("..") || resolve(canonicalRunnerTemp, pathFromRunnerTemp) !== canonicalPath) throw new Error("release handoff file is outside RUNNER_TEMP");
-	if (inputStats.size > maximumBytes) throw new Error("release handoff file is invalid or too large");
-	return canonicalPath;
+//#endregion
+//#region actions/create-release/src/render.ts
+function markdownEscape(value) {
+	return value.replaceAll("\r", " ").replaceAll("\n", " ").replace(/[&@\\`*_[\]()#!<>|]/gu, (character) => character === "&" ? "&amp;" : character === "@" ? "&#64;" : `\\${character}`);
 }
-async function validateInputFile(role, path, runnerTemp, maximumBytes) {
-	try {
-		return await checkedInputFile(path, runnerTemp, maximumBytes);
-	} catch {
-		fail({
-			category: "input-file-validation",
-			reason: role
-		});
-	}
+function renderReleaseBody(notes, facts) {
+	const lines = [
+		markdownEscape(notes.description),
+		"",
+		"## Highlights",
+		""
+	];
+	for (const highlight of notes.highlights) lines.push(`- ${markdownEscape(highlight)}`);
+	lines.push("", "## Commits", "");
+	if (facts.omittedCommitCount > 0) lines.push(`_${facts.omittedCommitCount} earlier mainline commits omitted for length._`, "");
+	if (facts.commits.length === 0) lines.push("_No mainline commits are present in this tag range._");
+	else for (const commit of facts.commits) lines.push(`- [\`${commit.sha.slice(0, 7)}\`](${facts.serverUrl}/${facts.repository}/commit/${commit.sha}) ${markdownEscape(commit.subject)}`);
+	lines.push("", "## Full changelog", "");
+	const encodedTag = encodeURIComponent(facts.tagName);
+	if (facts.previousTag === null) lines.push(`[View the initial release source at ${markdownEscape(facts.tagName)}](${facts.serverUrl}/${facts.repository}/tree/${encodedTag})`);
+	else lines.push(`[Compare ${markdownEscape(facts.previousTag)}...${markdownEscape(facts.tagName)}](${facts.serverUrl}/${facts.repository}/compare/${encodeURIComponent(facts.previousTag)}...${encodedTag})`);
+	return `${lines.join("\n")}\n`;
 }
-async function readInputFile(role, path) {
-	try {
-		return await readFile(path, "utf8");
-	} catch {
-		fail({
-			category: "input-file-validation",
-			reason: role
-		});
-	}
+//#endregion
+//#region actions/create-release/src/index.ts
+const MAX_CONTEXT_BYTES = 6e4;
+const MAX_FACTS_BYTES = 512e3;
+const MAX_BODY_BYTES = 12e4;
+function getActionInput(name) {
+	const value = process.env[`INPUT_${name.replaceAll(" ", "_").toUpperCase()}`]?.trim() ?? "";
+	if (value === "") fail({
+		category: "input-validation",
+		reason: "missing-required-input",
+		input: name
+	});
+	return value;
+}
+function formatFailure(error, fallbackCategory) {
+	const diagnostic = error instanceof SafeActionFailure ? error.diagnostic : {
+		category: fallbackCategory,
+		reason: "operation-failed"
+	};
+	return `create-release: failed: category=${diagnostic.category} reason=${diagnostic.reason}${"input" in diagnostic ? ` input=${diagnostic.input}` : ""}\n`;
 }
 async function run(clientFactory) {
 	let failureCategory = "model-generation";
@@ -15561,6 +15561,6 @@ async function run(clientFactory) {
 }
 if ((process.argv[1] === void 0 ? void 0 : pathToFileURL(resolve(process.argv[1])).href) === import.meta.url) await run();
 //#endregion
-export { generateNotes, renderReleaseBody, run, validateGeneratedNotes, validateReleaseFacts };
+export { SafeActionFailure, fail, generateNotes, readInputFile, renderReleaseBody, run, validateGeneratedNotes, validateInputFile, validateReleaseFacts };
 
 //# sourceMappingURL=index.mjs.map

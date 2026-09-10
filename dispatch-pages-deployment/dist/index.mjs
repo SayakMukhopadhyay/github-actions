@@ -16270,24 +16270,23 @@ function info(message) {
 	process.stdout.write(message + os$1.EOL);
 }
 //#endregion
-//#region dispatch-pages-deployment/dispatch-pages-deployment.ts
+//#region dispatch-pages-deployment/src/contracts.ts
 const EVENT_TYPE = "deploy-pages";
-const MAX_ATTEMPTS = 3;
+//#endregion
+//#region dispatch-pages-deployment/src/validation.ts
 const MAX_REPOSITORY_LENGTH = 256;
 const MAX_ARTIFACT_NAME_LENGTH = 255;
-const REQUEST_TIMEOUT_MILLISECONDS = 15e3;
-const MAX_RETRY_DELAY_MILLISECONDS = 3e4;
-function fail(message) {
+function fail$1(message) {
 	throw new Error(message);
 }
 function validateRepository(repository, label) {
-	if (repository.length === 0 || repository.length > MAX_REPOSITORY_LENGTH || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository)) fail(`${label} must use owner/repository form with only letters, numbers, dots, underscores, and hyphens`);
+	if (repository.length === 0 || repository.length > MAX_REPOSITORY_LENGTH || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository)) fail$1(`${label} must use owner/repository form with only letters, numbers, dots, underscores, and hyphens`);
 	const [owner, name] = repository.split("/");
-	if (owner === "." || owner === ".." || name === "." || name === "..") fail(`${label} contains an invalid owner or repository name`);
+	if (owner === "." || owner === ".." || name === "." || name === "..") fail$1(`${label} contains an invalid owner or repository name`);
 	return repository;
 }
 function validateArtifactName(artifactName) {
-	if (artifactName.length === 0 || artifactName.length > MAX_ARTIFACT_NAME_LENGTH) fail(`artifact-name must contain between 1 and ${MAX_ARTIFACT_NAME_LENGTH} characters`);
+	if (artifactName.length === 0 || artifactName.length > MAX_ARTIFACT_NAME_LENGTH) fail$1(`artifact-name must contain between 1 and ${MAX_ARTIFACT_NAME_LENGTH} characters`);
 	const forbiddenCharacters = /* @__PURE__ */ new Set([
 		"\"",
 		"*",
@@ -16301,22 +16300,30 @@ function validateArtifactName(artifactName) {
 	]);
 	for (const character of artifactName) {
 		const codePoint = character.codePointAt(0);
-		if (codePoint === void 0 || codePoint <= 31 || codePoint === 127 || forbiddenCharacters.has(character)) fail("artifact-name contains a control character or a character rejected by GitHub artifacts");
+		if (codePoint === void 0 || codePoint <= 31 || codePoint === 127 || forbiddenCharacters.has(character)) fail$1("artifact-name contains a control character or a character rejected by GitHub artifacts");
 	}
 	return artifactName;
 }
 function validateContext(context) {
 	validateRepository(context.sourceRepository, "source repository");
-	if (!/^[1-9][0-9]*$/u.test(context.sourceRunId)) fail("source workflow run ID is unavailable or invalid");
-	if (!/^[0-9a-f]{40}$/iu.test(context.sourceSha)) fail("source commit SHA is unavailable or invalid");
+	if (!/^[1-9][0-9]*$/u.test(context.sourceRunId)) fail$1("source workflow run ID is unavailable or invalid");
+	if (!/^[0-9a-f]{40}$/iu.test(context.sourceSha)) fail$1("source commit SHA is unavailable or invalid");
 	let apiUrl;
 	try {
 		apiUrl = new URL(context.apiUrl);
 	} catch {
-		fail("GitHub API URL is invalid");
+		fail$1("GitHub API URL is invalid");
 	}
-	if (apiUrl.protocol !== "https:" || apiUrl.username !== "" || apiUrl.password !== "" || apiUrl.search !== "" || apiUrl.hash !== "") fail("GitHub API URL must be an HTTPS URL without credentials, a query, or a fragment");
+	if (apiUrl.protocol !== "https:" || apiUrl.username !== "" || apiUrl.password !== "" || apiUrl.search !== "" || apiUrl.hash !== "") fail$1("GitHub API URL must be an HTTPS URL without credentials, a query, or a fragment");
 	return context;
+}
+//#endregion
+//#region dispatch-pages-deployment/src/dispatch.ts
+const MAX_ATTEMPTS = 3;
+const REQUEST_TIMEOUT_MILLISECONDS = 15e3;
+const MAX_RETRY_DELAY_MILLISECONDS = 3e4;
+function fail(message) {
+	throw new Error(message);
 }
 function createDispatchPayload(context, artifactName) {
 	return {
@@ -16330,7 +16337,14 @@ function createDispatchPayload(context, artifactName) {
 	};
 }
 function isRetryableResponse(response) {
-	return response.status === 408 || response.status === 429 || response.status === 500 || response.status === 502 || response.status === 503 || response.status === 504 || response.status === 403 && response.headers.has("retry-after");
+	return [
+		408,
+		429,
+		500,
+		502,
+		503,
+		504
+	].includes(response.status) || response.status === 403 && response.headers.has("retry-after");
 }
 function retryDelay(response, attempt, now = Date.now()) {
 	const retryAfter = response.headers.get("retry-after");
@@ -16342,19 +16356,13 @@ function retryDelay(response, attempt, now = Date.now()) {
 	}
 	return 1e3 * 2 ** (attempt - 1);
 }
-function requestId(response) {
-	const value = response.headers.get("x-github-request-id");
-	return value === null || value === "" ? "" : ` request-id=${value}`;
-}
 async function discardResponseBody(response) {
 	try {
 		await response.body?.cancel();
 	} catch {}
 }
 const defaultSleep = async (milliseconds) => {
-	await new Promise((resolve) => {
-		setTimeout(resolve, milliseconds);
-	});
+	await new Promise((resolve) => setTimeout(resolve, milliseconds));
 };
 async function dispatchPagesDeployment(inputs, context, dependencies = {}) {
 	if (inputs.token.trim() === "") fail("github-token is required");
@@ -16389,7 +16397,8 @@ async function dispatchPagesDeployment(inputs, context, dependencies = {}) {
 			await discardResponseBody(response);
 			return;
 		}
-		const diagnostic = `status=${response.status}${requestId(response)}`;
+		const id = response.headers.get("x-github-request-id");
+		const diagnostic = `status=${response.status}${id === null || id === "" ? "" : ` request-id=${id}`}`;
 		if (!isRetryableResponse(response) || attempt === MAX_ATTEMPTS) {
 			await discardResponseBody(response);
 			fail(`repository dispatch failed: ${diagnostic}`);
@@ -16399,6 +16408,8 @@ async function dispatchPagesDeployment(inputs, context, dependencies = {}) {
 		await sleep(delay);
 	}
 }
+//#endregion
+//#region dispatch-pages-deployment/src/index.ts
 function currentGitHubContext() {
 	return {
 		apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com",
@@ -16424,6 +16435,6 @@ async function run() {
 }
 if (process.argv[1] !== void 0 && import.meta.url === pathToFileURL(process.argv[1]).href) run();
 //#endregion
-export { createDispatchPayload, dispatchPagesDeployment, run, validateArtifactName, validateRepository };
+export { EVENT_TYPE, createDispatchPayload, dispatchPagesDeployment, run, validateArtifactName, validateContext, validateRepository };
 
 //# sourceMappingURL=index.mjs.map

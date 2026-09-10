@@ -27,6 +27,7 @@ interface ConsumerAction {
 }
 
 const repository = 'SayakMukhopadhyay/github-actions';
+
 function repositoryRoot(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 }
@@ -38,9 +39,11 @@ async function readConsumerActions(root: string): Promise<ConsumerAction[]> {
       .filter((entry) => entry.isDirectory())
       .map(async (entry) => {
         const metadataPath = path.join(root, entry.name, 'action.yaml');
+
         try {
           const source = await readFile(metadataPath, 'utf8');
           const metadata = parse(source) as ActionMetadata;
+
           return { directory: entry.name, metadata };
         } catch (error: unknown) {
           if (isFileMissing(error)) {
@@ -150,6 +153,7 @@ export async function generateActionSchema(root = repositoryRoot()): Promise<voi
   const actions = await readConsumerActions(root);
   const schema = buildSchema(actions);
   const destination = path.join(root, 'schemas', 'action-inputs.schema.json');
+
   await writeFile(destination, await format(JSON.stringify(schema), { parser: 'json', printWidth: 120 }), 'utf8');
 }
 

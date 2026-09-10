@@ -13,23 +13,30 @@ export function parseChangedPaths(contents: Buffer): string[] {
   }
 
   const paths: string[] = [];
+
   for (let index = 0; index < records.length;) {
     const status = records[index++];
+
     if (status === undefined || status.length === 0) {
       fail('truncated Git name-status record');
     }
+
     if (status.startsWith('R') || status.startsWith('C')) {
       const oldPath = records[index++];
       const newPath = records[index++];
+
       if (oldPath === undefined || newPath === undefined) {
         fail('truncated Git rename/copy record');
       }
+
       paths.push(oldPath, newPath);
     } else {
       const path = records[index++];
+
       if (path === undefined) {
         fail('truncated Git name-status record');
       }
+
       paths.push(path);
     }
   }

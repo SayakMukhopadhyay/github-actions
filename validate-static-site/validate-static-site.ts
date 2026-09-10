@@ -13,16 +13,20 @@ function displayPath(root: string, entry: string): string {
 
 async function inspectTree(root: string, directory: string): Promise<void> {
   const entries = await readdir(directory);
+
   for (const entry of entries) {
     const candidate = resolve(directory, entry);
     const stats = await lstat(candidate);
+
     if (stats.isSymbolicLink()) {
       fail(`static site must not contain symbolic links: ${displayPath(root, candidate)}`);
     }
+
     if (stats.isDirectory()) {
       await inspectTree(root, candidate);
       continue;
     }
+
     if (!stats.isFile()) {
       fail(`static site may contain only directories and regular files: ${displayPath(root, candidate)}`);
     }
@@ -38,6 +42,7 @@ export async function validateStaticSite(path: string): Promise<void> {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       fail(`static site path does not exist: ${path}`);
     }
+
     throw error;
   }
 
@@ -58,8 +63,10 @@ export async function validateStaticSite(path: string): Promise<void> {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       fail(`static site must contain a root index.html: ${path}`);
     }
+
     throw error;
   }
+
   if (indexStats.isSymbolicLink() || !indexStats.isFile()) {
     fail(`static site root index.html must be a regular file and not a symbolic link: ${path}`);
   }

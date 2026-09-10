@@ -3,12 +3,8 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test, type TestContext } from 'node:test';
-import {
-  createDispatchPayload,
-  dispatchPagesDeployment,
-  type GitHubContext,
-  type Request,
-} from '../dispatch-pages-deployment/dispatch-pages-deployment.ts';
+import type { GitHubContext, Request } from '../dispatch-pages-deployment/src/contracts.ts';
+import { createDispatchPayload, dispatchPagesDeployment } from '../dispatch-pages-deployment/src/dispatch.ts';
 import { validateStaticSite } from '../validate-static-site/validate-static-site.ts';
 
 const temporaryDirectories: string[] = [];
@@ -79,9 +75,11 @@ void test('validate-static-site rejects symbolic links anywhere in the site', as
   const site = validSite();
   const external = join(temporaryDirectory(), 'external.txt');
   writeFileSync(external, 'external');
+
   if (!createFileSymlinkOrSkip(testContext, external, join(site, 'assets', 'linked.txt'))) {
     return;
   }
+
   await assert.rejects(validateStaticSite(site), /must not contain symbolic links.*assets[\\/]linked\.txt/u);
 });
 
@@ -114,10 +112,13 @@ void test('dispatch sends the fixed request to the validated target repository',
   assert.equal(calls[0]?.url, 'https://api.github.com/repos/SayakMukhopadhyay/publisher/dispatches');
   assert.equal(calls[0]?.init.method, 'POST');
   assert.equal(new Headers(calls[0]?.init.headers).get('authorization'), 'Bearer secret-token');
+
   const requestBody = calls[0]?.init.body;
+
   if (typeof requestBody !== 'string') {
     assert.fail('expected a JSON string request body');
   }
+
   assert.deepEqual(JSON.parse(requestBody), createDispatchPayload(context, 'static-site'));
 });
 
@@ -138,6 +139,7 @@ void test('dispatch retries transient responses and honors retry-after without l
     context,
     { request, sleep: (delay) => Promise.resolve(delays.push(delay)).then(() => undefined) },
   );
+
   assert.equal(attempts, 2);
   assert.deepEqual(delays, [2_000]);
 });
@@ -158,6 +160,7 @@ void test('dispatch retries a GitHub secondary-rate-limit response with retry-af
     context,
     { request, sleep: () => Promise.resolve() },
   );
+
   assert.equal(attempts, 2);
 });
 
@@ -187,6 +190,7 @@ void test('dispatch failures report only safe status and request diagnostics', a
 
 void test('dispatch rejects malformed public inputs and derived context', async () => {
   const unusedRequest: Request = () => Promise.reject(new Error('request must not run'));
+
   await assert.rejects(
     dispatchPagesDeployment(
       { token: 'token', targetRepository: 'owner/repository/extra', artifactName: 'site' },
@@ -195,6 +199,7 @@ void test('dispatch rejects malformed public inputs and derived context', async 
     ),
     /owner\/repository form/u,
   );
+
   await assert.rejects(
     dispatchPagesDeployment(
       { token: 'token', targetRepository: 'owner/repository', artifactName: '../site' },
@@ -203,6 +208,7 @@ void test('dispatch rejects malformed public inputs and derived context', async 
     ),
     /artifact-name contains/u,
   );
+
   await assert.rejects(
     dispatchPagesDeployment(
       { token: 'token', targetRepository: 'owner/repository', artifactName: 'site' },

@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
-import { prepareHelmPackage } from '../actions/helm-package-push/helm-package-push.ts';
+import { prepareHelmPackage } from '../actions/helm-package-push/src/preparation.ts';
 
 const temporaryDirectories: string[] = [];
 
@@ -42,6 +42,7 @@ void test('helm-package-push prepares stable and development chart metadata', ()
     commitSha: 'not-needed-for-stable-builds',
     runnerTemp: stable.runnerTemp,
   });
+
   assert.equal(stableResult.chartDirectory, stable.chartDirectory);
   assert.equal(stableResult.chartName, 'fixture');
   assert.equal(stableResult.chartVersion, '0.4.0');
@@ -57,6 +58,7 @@ void test('helm-package-push prepares stable and development chart metadata', ()
     commitSha,
     runnerTemp: development.runnerTemp,
   });
+
   assert.equal(developmentResult.chartVersion, `0.0.0-build-${commitSha.toLowerCase()}`);
 });
 
@@ -137,6 +139,7 @@ void test('helm-package-push rejects invalid authorities and paths', () => {
 void test('helm-package-push requires a full commit SHA only for development packages', () => {
   const repository = temporaryDirectory();
   const fixture = writeChart(repository);
+
   assert.throws(
     () =>
       prepareHelmPackage({
@@ -152,18 +155,21 @@ void test('helm-package-push requires a full commit SHA only for development pac
 
 void test('Helm delivery TypeScript never invokes external commands', () => {
   const source = readFileSync(
-    join(import.meta.dirname, '..', 'actions', 'helm-package-push', 'helm-package-push.ts'),
+    join(import.meta.dirname, '..', 'actions', 'helm-package-push', 'src', 'preparation.ts'),
     'utf8',
   );
+
   const commandExecutionApi = new RegExp(
     String.raw`(?:node:)?child_process|\bexecFile(?:Sync)?\b|\bexecSync\b|\bspawn(?:Sync)?\b|\bexeca\b`,
     'u',
   );
+
   assert.doesNotMatch(source, commandExecutionApi);
 });
 
 void test('container-build-push keeps preparation inline and omits an empty auth token', () => {
   const metadata = readFileSync(join(import.meta.dirname, '..', 'container-build-push', 'action.yaml'), 'utf8');
+
   assert.doesNotMatch(metadata, new RegExp(String.raw`prepare\.sh`, 'u'));
   assert.match(metadata, new RegExp(String.raw`secrets: \$\{\{ inputs\.auth-token != ''`, 'u'));
 });

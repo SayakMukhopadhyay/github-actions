@@ -52,6 +52,7 @@ void test('pins the Argo CD Linux amd64 release URL and checksum', () => {
 void test('writes a download only after its pinned checksum matches', async () => {
   const body = 'verified fixture binary';
   const destination = path.join(temporaryDirectory(), 'argocd');
+
   await writeVerifiedDownload({
     destination,
     expectedSha256: createHash('sha256').update(body).digest('hex'),
@@ -81,6 +82,7 @@ void test('keeps the public action contract narrow and read-only', () => {
   const metadata = parse(
     readFileSync(path.join(root, 'argocd-verify-deployment', 'action.yaml'), 'utf8'),
   ) as ActionMetadata;
+
   assert.deepEqual(Object.keys(metadata.inputs ?? {}).sort(), [
     'application',
     'auth-token',
@@ -105,6 +107,7 @@ void test('keeps the public action contract narrow and read-only', () => {
   assert.equal(steps[1]?.uses, '$/actions/argocd-verify-deployment');
 
   const transaction = readFileSync(path.join(root, 'argocd-verify-deployment', 'verify-deployment.sh'), 'utf8');
+
   assert.match(transaction, /--grpc-web/u);
   assert.match(transaction, /CF-Access-Client-Id/u);
   assert.match(transaction, /CF-Access-Client-Secret/u);

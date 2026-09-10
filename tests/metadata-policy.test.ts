@@ -49,6 +49,7 @@ interface WorkflowMetadata {
 const root = path.resolve(import.meta.dirname, '..');
 const immutableAction = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[0-9a-f]{40}$/u;
 const internalAction = /^\$\/(?:actions\/)?[a-z0-9-]+$/u;
+
 function readYaml<T>(file: string): T {
   return parse(readFileSync(file, 'utf8')) as T;
 }
@@ -64,7 +65,9 @@ function consumerActionNames(): string[] {
       try {
         return readFileSync(path.join(root, entry.name, 'action.yaml')).length > 0;
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          return false;
+        }
         throw error;
       }
     })
@@ -74,11 +77,14 @@ function consumerActionNames(): string[] {
 
 void test('consumer action metadata is complete and uses safe runtime boundaries', () => {
   const actionNames = consumerActionNames();
+
   assert.notEqual(actionNames.length, 0, 'expected at least one reusable action');
 
   const readme = readFileSync(path.join(root, 'README.md'), 'utf8');
+
   for (const actionName of actionNames) {
     const metadata = readAction(actionName);
+
     assert.equal(
       metadata.runs?.using === 'node24' || metadata.runs?.using === 'composite',
       true,
@@ -93,6 +99,7 @@ void test('consumer action metadata is complete and uses safe runtime boundaries
       assert.notEqual(input.description, '', `${actionName}.${inputName} description`);
       assert.equal(typeof input.required, 'boolean', `${actionName}.${inputName} required`);
     }
+
     for (const [outputName, output] of Object.entries(metadata.outputs ?? {})) {
       assert.equal(typeof output.description, 'string', `${actionName}.${outputName} description`);
       assert.notEqual(output.description, '', `${actionName}.${outputName} description`);
@@ -114,6 +121,7 @@ void test('consumer action metadata is complete and uses safe runtime boundaries
           `${actionName} action reference is not immutable or repository-internal: ${step.uses}`,
         );
       }
+
       if (step.run !== undefined) {
         assert.equal(typeof step.shell, 'string', `${actionName} run step needs an explicit shell`);
         assert.notEqual(step.shell, '', `${actionName} run step needs an explicit shell`);
@@ -124,6 +132,7 @@ void test('consumer action metadata is complete and uses safe runtime boundaries
 
 void test('container build metadata keeps one version tag, exact forwarding, and push-only digest output', () => {
   const metadata = readAction('container-build-push');
+
   for (const input of ['build-contexts', 'build-args', 'cache-from', 'cache-to']) {
     assert.equal(metadata.inputs?.[input]?.required, false, `${input} is optional`);
     assert.equal(metadata.inputs?.[input]?.default, '', `${input} has an empty default`);
@@ -153,6 +162,7 @@ void test('container build metadata keeps one version tag, exact forwarding, and
 
 void test('container promotion metadata performs one direct digest-to-tag operation', () => {
   const metadata = readAction('container-promote');
+
   assert.equal(metadata.inputs?.['source-digest']?.required, true);
   assert.equal(metadata.inputs?.tag?.required, true);
   assert.deepEqual(Object.keys(metadata.inputs ?? {}).sort(), [
@@ -166,6 +176,7 @@ void test('container promotion metadata performs one direct digest-to-tag operat
   ]);
 
   const steps = metadata.runs?.steps ?? [];
+
   assert.equal(
     steps.some((step) => String(step.uses).startsWith('docker/build-push-action@')),
     false,
@@ -175,12 +186,14 @@ void test('container promotion metadata performs one direct digest-to-tag operat
     false,
   );
   const command = steps.find((step) => step.name === 'Create target image tag')?.run;
+
   assert.match(String(command), /docker buildx imagetools create --prefer-index=false/u);
   assert.doesNotMatch(String(command), /imagetools inspect|docker pull|docker (?:image )?build(?: |$)/u);
 });
 
 void test('Azure ACR token metadata keeps OIDC inputs, token outputs, and the immutable login pin explicit', () => {
   const metadata = readAction('azure-acr-token');
+
   assert.deepEqual(Object.keys(metadata.inputs ?? {}).sort(), [
     'client-id',
     'login-server',
@@ -195,6 +208,7 @@ void test('Azure ACR token metadata keeps OIDC inputs, token outputs, and the im
   assert.equal(metadata.outputs?.['access-token']?.value, '${{ steps.token.outputs.access-token }}');
 
   const steps = metadata.runs?.steps ?? [];
+
   assert.equal(steps.length, 2);
   assert.equal(steps[0]?.uses, 'azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c');
   assert.deepEqual(steps[0]?.with, {
@@ -207,6 +221,7 @@ void test('Azure ACR token metadata keeps OIDC inputs, token outputs, and the im
   assert.match(String(steps[1]?.run), /azure-acr-token\.sh/u);
 
   const transaction = readFileSync(path.join(root, 'azure-acr-token', 'azure-acr-token.sh'), 'utf8');
+
   assert.match(transaction, /az_arguments\+=\(--suffix "\$suffix"\)/u);
   assert.match(transaction, /printf '::add-mask::%s\\n' "\$access_token"/u);
   assert.match(transaction, /printf 'access-token=%s\\n' "\$access_token"/u);
@@ -214,6 +229,7 @@ void test('Azure ACR token metadata keeps OIDC inputs, token outputs, and the im
 
 void test('checkout-dependencies supports explicit Go and npm selection with one secure checkout', () => {
   const metadata = readAction('checkout-dependencies');
+
   assert.equal(metadata.inputs?.['working-directory']?.default, '.');
   assert.equal(metadata.inputs?.['go-version']?.required, false);
   assert.equal(metadata.inputs?.['go-version']?.default, '');
@@ -226,24 +242,29 @@ void test('checkout-dependencies supports explicit Go and npm selection with one
   const checkoutSteps = steps.filter(
     (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
   );
+
   assert.equal(checkoutSteps.length, 1);
   assert.equal(checkoutSteps[0]?.with?.['persist-credentials'], false);
 
   const setupNode = steps.find((step) => typeof step.uses === 'string' && step.uses.startsWith('actions/setup-node@'));
+
   assert.equal(setupNode?.with?.cache, 'npm');
   assert.match(String(setupNode?.with?.['cache-dependency-path']), /package-lock\.json/u);
   assert.equal('cache-dependency-path' in (metadata.inputs ?? {}), false);
 
   const npmInstall = steps.find((step) => step.run === 'npm ci');
+
   assert.notEqual(npmInstall, undefined);
   assert.match(String(npmInstall?.['working-directory']), /node-working-directory/u);
 });
 
 void test('Pages deployment metadata keeps dispatch and publication contracts narrow', () => {
   const dispatch = readAction('dispatch-pages-deployment');
+
   assert.deepEqual(Object.keys(dispatch.inputs ?? {}).sort(), ['artifact-name', 'github-token', 'target-repository']);
 
   const deploy = readAction('deploy-pages-artifact');
+
   assert.deepEqual(Object.keys(deploy.inputs ?? {}).sort(), [
     'artifact-name',
     'github-token',
@@ -251,7 +272,9 @@ void test('Pages deployment metadata keeps dispatch and publication contracts na
     'source-run-id',
   ]);
   assert.equal(deploy.outputs?.['page-url']?.value, '${{ steps.deployment.outputs.page_url }}');
+
   const steps = deploy.runs?.steps ?? [];
+
   assert.deepEqual(
     steps.map((step) => step.uses),
     [
@@ -266,6 +289,7 @@ void test('Pages deployment metadata keeps dispatch and publication contracts na
 
 void test('chart promotion metadata exposes personal defaults with explicit overrides', () => {
   const metadata = readAction('chart-update-deploy');
+
   assert.equal(metadata.inputs?.['chart-version']?.required, false);
   assert.equal(metadata.inputs?.['chart-version']?.default, '');
   assert.equal(metadata.inputs?.['image-tag']?.required, false);
@@ -281,6 +305,7 @@ void test('chart promotion metadata exposes personal defaults with explicit over
 
 void test('static-site promotion metadata keeps the fixed dependency contract narrow', () => {
   const metadata = readAction('static-site-update-deploy');
+
   assert.deepEqual(Object.keys(metadata.inputs ?? {}).sort(), [
     'chart-name',
     'environment',
@@ -297,6 +322,7 @@ void test('static-site promotion metadata keeps the fixed dependency contract na
 
 void test('release-tags fixes the target and keeps Git credentials ephemeral', () => {
   const metadata = readAction('release-tags');
+
   assert.equal(metadata.inputs?.token?.required, true);
   assert.equal(metadata.inputs?.tags?.required, true);
   assert.equal(metadata.inputs?.mode?.default, 'verify');
@@ -309,17 +335,20 @@ void test('release-tags fixes the target and keeps Git credentials ephemeral', (
   const checkoutSteps = (metadata.runs?.steps ?? []).filter(
     (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
   );
+
   assert.equal(checkoutSteps.length, 1);
   assert.equal(checkoutSteps[0]?.with?.ref, '${{ github.sha }}');
   assert.equal(checkoutSteps[0]?.with?.['fetch-tags'], false);
   assert.equal(checkoutSteps[0]?.with?.['persist-credentials'], false);
 
   const transactionSteps = (metadata.runs?.steps ?? []).filter((step) => step.id === 'tags');
+
   assert.equal(transactionSteps.length, 1);
   assert.equal(transactionSteps[0]?.env?.INPUT_TOKEN, '${{ inputs.token }}');
   assert.equal(transactionSteps[0]?.env?.TARGET_SHA, '${{ github.sha }}');
 
   const transaction = readFileSync(path.join(root, 'release-tags', 'release-tags.sh'), 'utf8');
+
   assert.match(transaction, /unset INPUT_TOKEN/u);
   assert.match(transaction, /git_remote push --atomic --no-force/u);
   assert.doesNotMatch(transaction, /git tag/u);
@@ -329,6 +358,7 @@ void test('CI exercises one container tag and multiline build inputs through the
   const workflow = readYaml<WorkflowMetadata>(path.join(root, '.github', 'workflows', 'ci.yaml'));
   const steps = workflow.jobs?.['action-level']?.steps ?? [];
   const fixtures = steps.filter((step) => step.uses === '$/container-build-push');
+
   assert.equal(fixtures.length, 1);
   assert.equal(
     fixtures[0]?.with?.['build-contexts'],

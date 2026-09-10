@@ -22864,7 +22864,7 @@ var require_public_api = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.stringify = stringify;
 }));
 //#endregion
-//#region actions/helm-package-push/helm-package-push.ts
+//#region actions/helm-package-push/src/preparation.ts
 var import_dist = (/* @__PURE__ */ __commonJSMin(((exports) => {
 	var composer = require_composer();
 	var Document = require_Document();
@@ -22986,6 +22986,8 @@ function prepareHelmPackage(options) {
 		repositoriesFile
 	};
 }
+//#endregion
+//#region actions/helm-package-push/src/index.ts
 function run() {
 	try {
 		const result = prepareHelmPackage({
@@ -23005,6 +23007,6 @@ function run() {
 }
 if (process.argv[1] !== void 0 && import.meta.url === pathToFileURL(process.argv[1]).href) run();
 //#endregion
-export { prepareHelmPackage, run };
+export { dependencyRepositories, prepareHelmPackage, run };
 
 //# sourceMappingURL=index.mjs.map

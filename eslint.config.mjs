@@ -9,9 +9,11 @@ export default tseslint.config(
   eslint.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
   tseslint.configs.stylisticTypeChecked,
+  eslintConfigPrettier,
   {
     files: ['**/*.ts'],
     rules: {
+      curly: ['error', 'all'],
       'no-restricted-imports': [
         'error',
         {
@@ -35,5 +37,4 @@ export default tseslint.config(
       },
     },
   },
-  eslintConfigPrettier,
 );

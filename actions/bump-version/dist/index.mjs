@@ -22919,7 +22919,7 @@ var import_dist = (/* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.visitAsync = visit.visitAsync;
 })))();
 const CANONICAL_VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
-function fail$1(message) {
+function fail$2(message) {
 	throw new Error(message);
 }
 function isContained(root, candidate) {
@@ -22932,11 +22932,11 @@ function requireRegularContainedFile(authorityRoot, file, label) {
 	try {
 		metadata = lstatSync(file);
 	} catch {
-		fail$1(`${label} file does not exist: ${file}`);
+		fail$2(`${label} file does not exist: ${file}`);
 	}
-	if (metadata.isSymbolicLink() || !metadata.isFile()) fail$1(`${label} must be a regular non-symlink file: ${file}`);
+	if (metadata.isSymbolicLink() || !metadata.isFile()) fail$2(`${label} must be a regular non-symlink file: ${file}`);
 	const resolvedFile = realpathSync(file);
-	if (!isContained(root, resolvedFile)) fail$1(`${label} file escapes the checkout: ${file}`);
+	if (!isContained(root, resolvedFile)) fail$2(`${label} file escapes the checkout: ${file}`);
 	return resolvedFile;
 }
 function resolveProject(workspaceInput, workingDirectory) {
@@ -22946,9 +22946,9 @@ function resolveProject(workspaceInput, workingDirectory) {
 	try {
 		project = realpathSync(requestedProject);
 	} catch {
-		fail$1("working-directory does not exist");
+		fail$2("working-directory does not exist");
 	}
-	if (!isContained(workspace, project)) fail$1("working-directory escapes the checkout");
+	if (!isContained(workspace, project)) fail$2("working-directory escapes the checkout");
 	return {
 		workspace,
 		project
@@ -22958,17 +22958,17 @@ function readCanonicalVersion(file, label, authorityRoot = dirname(file)) {
 	const authorityFile = requireRegularContainedFile(authorityRoot, file, label);
 	const contents = readFileSync(authorityFile, "utf8");
 	const match = /^([^\r\n]*)(?:\n)?$/.exec(contents);
-	if (match === null || contents.endsWith("\n\n")) fail$1(`${label} file must contain exactly one line: ${file}`);
+	if (match === null || contents.endsWith("\n\n")) fail$2(`${label} file must contain exactly one line: ${file}`);
 	const version = match[1];
-	if (!CANONICAL_VERSION.test(version)) fail$1(`${label} in ${file} must be canonical MAJOR.MINOR.PATCH; got '${version}'`);
+	if (!CANONICAL_VERSION.test(version)) fail$2(`${label} in ${file} must be canonical MAJOR.MINOR.PATCH; got '${version}'`);
 	return version;
 }
 function readYamlScalar(file, field, authorityRoot = dirname(file)) {
 	const authorityFile = requireRegularContainedFile(authorityRoot, file, "chart metadata");
 	const document = (0, import_dist.parseDocument)(readFileSync(authorityFile, "utf8"), { uniqueKeys: true });
-	if (document.errors.length > 0) fail$1(`could not read ${file} field ${field}: ${document.errors[0].message}`);
+	if (document.errors.length > 0) fail$2(`could not read ${file} field ${field}: ${document.errors[0].message}`);
 	const value = document.get(field);
-	if (typeof value !== "string" && typeof value !== "number") fail$1(`could not read ${file} field ${field}`);
+	if (typeof value !== "string" && typeof value !== "number") fail$2(`could not read ${file} field ${field}`);
 	return String(value);
 }
 function checkVersion(options) {
@@ -22980,7 +22980,7 @@ function checkVersion(options) {
 		const chartVersion = readCanonicalVersion(chartVersionFile, "chart version", project);
 		const actualChartVersion = readYamlScalar(chartFile, "version", project);
 		readYamlScalar(chartFile, "appVersion", project);
-		if (actualChartVersion !== chartVersion) fail$1(`${chartFile} field version mismatch: expected '${chartVersion}', got '${actualChartVersion}'`);
+		if (actualChartVersion !== chartVersion) fail$2(`${chartFile} field version mismatch: expected '${chartVersion}', got '${actualChartVersion}'`);
 	}
 }
 function run$1() {
@@ -22997,19 +22997,9 @@ function run$1() {
 }
 if (process.argv[1] !== void 0 && import.meta.url === pathToFileURL(process.argv[1]).href) run$1();
 //#endregion
-//#region actions/bump-version/bump-version.ts
-function fail(message) {
+//#region actions/bump-version/src/chart.ts
+function fail$1(message) {
 	throw new Error(message);
-}
-function incrementVersion(version, increment) {
-	if (increment !== "patch" && increment !== "minor" && increment !== "major") fail("increment must be patch, minor, or major");
-	const [majorText, minorText, patchText] = version.split(".");
-	const major = BigInt(majorText);
-	const minor = BigInt(minorText);
-	const patch = BigInt(patchText);
-	if (increment === "major") return `${major + 1n}.0.0`;
-	if (increment === "minor") return `${major}.${minor + 1n}.0`;
-	return `${major}.${minor}.${patch + 1n}`;
 }
 function readChart(file, authorityRoot) {
 	const authorityFile = requireRegularContainedFile(authorityRoot, file, "chart metadata");
@@ -23018,7 +23008,7 @@ function readChart(file, authorityRoot) {
 		keepSourceTokens: true,
 		uniqueKeys: true
 	});
-	if (document.errors.length > 0 || !(0, import_dist.isMap)(document.contents)) fail(`${file} must contain a valid YAML mapping`);
+	if (document.errors.length > 0 || !(0, import_dist.isMap)(document.contents)) fail$1(`${file} must contain a valid YAML mapping`);
 	return {
 		source,
 		document
@@ -23026,7 +23016,7 @@ function readChart(file, authorityRoot) {
 }
 function chartScalar(document, file, field) {
 	const node = document.get(field, true);
-	if (!(0, import_dist.isScalar)(node) || typeof node.value !== "string" && typeof node.value !== "number") fail(`${file} must contain exactly one top-level ${field} field`);
+	if (!(0, import_dist.isScalar)(node) || typeof node.value !== "string" && typeof node.value !== "number") fail$1(`${file} must contain exactly one top-level ${field} field`);
 	return String(node.value);
 }
 function patchChartScalars(file, authorityRoot, replacements) {
@@ -23035,7 +23025,7 @@ function patchChartScalars(file, authorityRoot, replacements) {
 	const patches = [];
 	for (const [field, value] of replacements) {
 		const node = document.get(field, true);
-		if (!(0, import_dist.isScalar)(node) || node.range == null) fail(`${file} must contain exactly one top-level ${field} field`);
+		if (!(0, import_dist.isScalar)(node) || node.range == null) fail$1(`${file} must contain exactly one top-level ${field} field`);
 		const [start, end] = node.range;
 		const original = source.slice(start, end);
 		const quote = original.startsWith("\"") && original.endsWith("\"") ? "\"" : original.startsWith("'") && original.endsWith("'") ? "'" : "";
@@ -23048,9 +23038,26 @@ function patchChartScalars(file, authorityRoot, replacements) {
 	let updated = source;
 	for (const patch of patches.sort((left, right) => right.start - left.start)) updated = `${updated.slice(0, patch.start)}${patch.replacement}${updated.slice(patch.end)}`;
 	const verified = (0, import_dist.parseDocument)(updated, { uniqueKeys: true });
-	if (verified.errors.length > 0) fail(`could not update ${file}`);
-	for (const [field, value] of replacements) if (chartScalar(verified, file, field) !== value) fail(`could not update ${file} field ${field}`);
+	if (verified.errors.length > 0) fail$1(`could not update ${file}`);
+	for (const [field, value] of replacements) if (chartScalar(verified, file, field) !== value) fail$1(`could not update ${file} field ${field}`);
 	writeFileSync(authorityFile, updated, "utf8");
+}
+//#endregion
+//#region actions/bump-version/src/semantic-version.ts
+function incrementVersion(version, increment) {
+	if (increment !== "patch" && increment !== "minor" && increment !== "major") throw new Error("increment must be patch, minor, or major");
+	const [majorText, minorText, patchText] = version.split(".");
+	const major = BigInt(majorText);
+	const minor = BigInt(minorText);
+	const patch = BigInt(patchText);
+	if (increment === "major") return `${major + 1n}.0.0`;
+	if (increment === "minor") return `${major}.${minor + 1n}.0`;
+	return `${major}.${minor}.${patch + 1n}`;
+}
+//#endregion
+//#region actions/bump-version/src/mutation.ts
+function fail(message) {
+	throw new Error(message);
 }
 function mutateVersions(options) {
 	if (!options.helm && !options.go) return {
@@ -23077,14 +23084,15 @@ function mutateVersions(options) {
 	if (options.go) writeFileSync(applicationFile, `${newApplicationVersion}\n`, "utf8");
 	if (options.helm) {
 		writeFileSync(chartVersionFile, `${newChartVersion}\n`, "utf8");
-		const replacements = /* @__PURE__ */ new Map([["version", newChartVersion], ["appVersion", options.go ? newApplicationVersion : applicationVersion]]);
-		patchChartScalars(chartFile, project, replacements);
+		patchChartScalars(chartFile, project, /* @__PURE__ */ new Map([["version", newChartVersion], ["appVersion", options.go ? newApplicationVersion : applicationVersion]]));
 	}
 	return {
 		applicationVersion: newApplicationVersion,
 		chartVersion: newChartVersion
 	};
 }
+//#endregion
+//#region actions/bump-version/src/index.ts
 function run() {
 	try {
 		const helm = getInput("helm") === "true";
@@ -23105,6 +23113,6 @@ function run() {
 }
 if (process.argv[1] !== void 0 && import.meta.url === pathToFileURL(process.argv[1]).href) run();
 //#endregion
-export { incrementVersion, mutateVersions, run };
+export { chartScalar, incrementVersion, mutateVersions, patchChartScalars, readChart, run };
 
 //# sourceMappingURL=index.mjs.map

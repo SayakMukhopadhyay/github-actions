@@ -22864,7 +22864,7 @@ var require_public_api = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.stringify = stringify;
 }));
 //#endregion
-//#region actions/helm-deployment-state/helm-deployment-state.ts
+//#region actions/helm-deployment-state/src/validation.ts
 var import_dist = (/* @__PURE__ */ __commonJSMin(((exports) => {
 	var composer = require_composer();
 	var Document = require_Document();
@@ -22913,47 +22913,52 @@ var import_dist = (/* @__PURE__ */ __commonJSMin(((exports) => {
 })))();
 const CANONICAL_VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u;
 const DEVELOPMENT_VERSION = /^0\.0\.0-build-([0-9a-f]{40})$/u;
-function fail(message) {
+function fail$1(message) {
 	throw new Error(message);
 }
 function ensureContained(parent, child, label) {
 	const relativeChild = relative(parent, child);
-	if (relativeChild === ".." || relativeChild.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || isAbsolute(relativeChild)) fail(`${label} escapes the checkout`);
+	if (relativeChild === ".." || relativeChild.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || isAbsolute(relativeChild)) fail$1(`${label} escapes the checkout`);
 }
 function requiredInput(value, label) {
-	if (value.trim().length === 0 || value.includes("\0") || value.includes("\n") || value.includes("\r")) fail(`${label} must be a non-empty single-line value`);
+	if (value.trim().length === 0 || value.includes("\0") || value.includes("\n") || value.includes("\r")) fail$1(`${label} must be a non-empty single-line value`);
 	return value;
 }
-function readAuthorityFile(file) {
-	if (!existsSync(file)) fail(`authority file does not exist: ${file}`);
-	const status = lstatSync(file);
-	if (status.isSymbolicLink()) fail(`authority file must not be a symbolic link: ${file}`);
-	if (!status.isFile()) fail(`authority path must be a regular file: ${file}`);
-	return readFileSync(file, "utf8");
-}
 function parseMapping(file) {
-	const document = (0, import_dist.parseDocument)(readAuthorityFile(file), { uniqueKeys: true });
-	if (document.errors.length > 0 || !(0, import_dist.isMap)(document.contents)) fail(`${file} must contain a valid YAML mapping`);
+	if (!existsSync(file)) fail$1(`authority file does not exist: ${file}`);
+	const status = lstatSync(file);
+	if (status.isSymbolicLink()) fail$1(`authority file must not be a symbolic link: ${file}`);
+	if (!status.isFile()) fail$1(`authority path must be a regular file: ${file}`);
+	const document = (0, import_dist.parseDocument)(readFileSync(file, "utf8"), { uniqueKeys: true });
+	if (document.errors.length > 0 || !(0, import_dist.isMap)(document.contents)) fail$1(`${file} must contain a valid YAML mapping`);
 	return document;
 }
 function scalarValue(node, label) {
-	if (!(0, import_dist.isScalar)(node)) fail(`${label} must be a non-empty single-line scalar`);
-	const rawValue = node.value;
-	if (typeof rawValue !== "string" && typeof rawValue !== "number" && typeof rawValue !== "boolean" && typeof rawValue !== "bigint") fail(`${label} must be a non-empty single-line scalar`);
-	const value = String(rawValue);
-	if (value.trim().length === 0 || value.includes("\0") || value.includes("\n") || value.includes("\r")) fail(`${label} must be a non-empty single-line scalar`);
+	if (!(0, import_dist.isScalar)(node) || ![
+		"string",
+		"number",
+		"boolean",
+		"bigint"
+	].includes(typeof node.value)) fail$1(`${label} must be a non-empty single-line scalar`);
+	const value = String(node.value);
+	if (value.trim().length === 0 || value.includes("\0") || value.includes("\n") || value.includes("\r")) fail$1(`${label} must be a non-empty single-line scalar`);
 	return value;
 }
 function optionalStringScalar(node, label) {
 	if (node === void 0 || node === null) return;
-	if (!(0, import_dist.isScalar)(node) || typeof node.value !== "string") fail(`${label} must be a non-empty single-line string scalar`);
+	if (!(0, import_dist.isScalar)(node) || typeof node.value !== "string") fail$1(`${label} must be a non-empty single-line string scalar`);
 	return scalarValue(node, label);
 }
 function sourceRef(version) {
 	const development = DEVELOPMENT_VERSION.exec(version);
-	if (development !== null) return development[1] ?? fail("development chart version did not contain a commit SHA");
+	if (development !== null) return development[1] ?? fail$1("development chart version did not contain a commit SHA");
 	if (CANONICAL_VERSION.test(version)) return `chart-v${version}`;
-	return fail(`dependency version '${version}' is not a supported development or stable chart version`);
+	return fail$1(`dependency version '${version}' is not a supported development or stable chart version`);
+}
+//#endregion
+//#region actions/helm-deployment-state/src/deployment-state.ts
+function fail(message) {
+	throw new Error(message);
 }
 function readHelmDeploymentState(options) {
 	const chartName = requiredInput(options.chartName, "chart-name");
@@ -22996,6 +23001,8 @@ function readHelmDeploymentState(options) {
 		chartSourceRef: sourceRef(dependencyVersion)
 	};
 }
+//#endregion
+//#region actions/helm-deployment-state/src/index.ts
 function run() {
 	try {
 		const state = readHelmDeploymentState({
@@ -23014,6 +23021,6 @@ function run() {
 }
 if (process.argv[1] !== void 0 && import.meta.url === pathToFileURL(process.argv[1]).href) run();
 //#endregion
-export { readHelmDeploymentState, run };
+export { ensureContained, optionalStringScalar, parseMapping, readHelmDeploymentState, requiredInput, run, scalarValue, sourceRef };
 
 //# sourceMappingURL=index.mjs.map

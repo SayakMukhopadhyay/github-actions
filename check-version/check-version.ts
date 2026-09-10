@@ -42,6 +42,7 @@ export function requireRegularContainedFile(authorityRoot: string, file: string,
   if (!isContained(root, resolvedFile)) {
     fail(`${label} file escapes the checkout: ${file}`);
   }
+
   return resolvedFile;
 }
 
@@ -61,6 +62,7 @@ export function resolveProject(
   } catch {
     fail('working-directory does not exist');
   }
+
   if (!isContained(workspace, project)) {
     fail('working-directory escapes the checkout');
   }
@@ -124,6 +126,7 @@ export function run(): void {
       workingDirectory: core.getInput('working-directory') || '.',
       helm: core.getInput('helm') === 'true',
     });
+
     core.info('Version metadata is consistent');
   } catch (error) {
     core.setFailed(error instanceof Error ? error.message : 'Unknown error occurred');
