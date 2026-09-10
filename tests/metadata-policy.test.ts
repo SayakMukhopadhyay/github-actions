@@ -187,8 +187,15 @@ void test('container promotion metadata performs one direct digest-to-tag operat
   );
   const command = steps.find((step) => step.name === 'Create target image tag')?.run;
 
-  assert.match(String(command), /docker buildx imagetools create --prefer-index=false/u);
-  assert.doesNotMatch(String(command), /imagetools inspect|docker pull|docker (?:image )?build(?: |$)/u);
+  assert.match(String(command), /promote\.ps1/u);
+
+  const promotionModule = readFileSync(
+    path.join(import.meta.dirname, '..', 'container-promote', 'ContainerPromotion.psm1'),
+    'utf8',
+  );
+
+  assert.match(promotionModule, /'buildx',\s*'imagetools',\s*'create',\s*'--prefer-index=false'/u);
+  assert.doesNotMatch(promotionModule, /imagetools['"]?,['"]?inspect|docker pull|docker (?:image )?build(?: |$)/u);
 });
 
 void test('Azure ACR token metadata keeps OIDC inputs, token outputs, and the immutable login pin explicit', () => {
@@ -218,13 +225,14 @@ void test('Azure ACR token metadata keeps OIDC inputs, token outputs, and the im
   });
   assert.equal(steps[1]?.id, 'token');
   assert.equal(steps[1]?.env?.INPUT_LOGIN_SERVER, '${{ inputs.login-server }}');
-  assert.match(String(steps[1]?.run), /azure-acr-token\.sh/u);
+  assert.equal(steps[1]?.shell, 'pwsh');
+  assert.match(String(steps[1]?.run), /azure-acr-token\.ps1/u);
 
-  const transaction = readFileSync(path.join(root, 'azure-acr-token', 'azure-acr-token.sh'), 'utf8');
+  const transaction = readFileSync(path.join(root, 'azure-acr-token', 'AzureAcrToken.psm1'), 'utf8');
 
-  assert.match(transaction, /az_arguments\+=\(--suffix "\$suffix"\)/u);
-  assert.match(transaction, /printf '::add-mask::%s\\n' "\$access_token"/u);
-  assert.match(transaction, /printf 'access-token=%s\\n' "\$access_token"/u);
+  assert.match(transaction, /--suffix/u);
+  assert.match(transaction, /Add-GitHubMask/u);
+  assert.match(transaction, /Write-GitHubOutput.+access-token/su);
 });
 
 void test('checkout-dependencies supports explicit Go and npm selection with one secure checkout', () => {
@@ -347,10 +355,10 @@ void test('release-tags fixes the target and keeps Git credentials ephemeral', (
   assert.equal(transactionSteps[0]?.env?.INPUT_TOKEN, '${{ inputs.token }}');
   assert.equal(transactionSteps[0]?.env?.TARGET_SHA, '${{ github.sha }}');
 
-  const transaction = readFileSync(path.join(root, 'release-tags', 'release-tags.sh'), 'utf8');
+  const transaction = readFileSync(path.join(root, 'release-tags', 'ReleaseTags.psm1'), 'utf8');
 
-  assert.match(transaction, /unset INPUT_TOKEN/u);
-  assert.match(transaction, /git_remote push --atomic --no-force/u);
+  assert.match(transaction, /INPUT_TOKEN\s*=\s*\$null/u);
+  assert.match(transaction, /push.+--atomic.+--no-force/su);
   assert.doesNotMatch(transaction, /git tag/u);
 });
 

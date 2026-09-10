@@ -44,7 +44,7 @@ runs:
       with:
         version: v4.2.4
     - name: Update and push static-site image tag
-      shell: bash
+      shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_CHECKOUT_PATH: .gitops-charts
@@ -53,4 +53,4 @@ runs:
         INPUT_IMAGE_VERSION: ${{ inputs.image-version }}
         INPUT_TARGET_REF: ${{ inputs.target-ref }}
         INPUT_WRAPPER_CHART_PATH: ${{ inputs.wrapper-chart-path }}
-      run: 'bash "$ACTION_PATH/static-site-update-deploy.sh"'
+      run: '& "$env:ACTION_PATH/static-site-update-deploy.ps1"'

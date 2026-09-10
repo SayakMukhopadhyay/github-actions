@@ -32,11 +32,11 @@ runs:
 
     - id: tags
       name: Check, verify, or ensure release tags
-      shell: bash
+      shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_TAGS: ${{ inputs.tags }}
         INPUT_TOKEN: ${{ inputs.token }}
         TARGET_SHA: ${{ github.sha }}
-      run: 'bash "$ACTION_PATH/release-tags.sh"'
+      run: '& "$env:ACTION_PATH/release-tags.ps1"'

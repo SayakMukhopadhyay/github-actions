@@ -60,14 +60,14 @@ runs:
         commit-sha: ${{ github.sha }}
     - name: Log in to OCI registry
       if: inputs.push == 'true'
-      shell: bash
+      shell: pwsh
       env:
         REGISTRY: ${{ inputs.registry }}
         USERNAME: ${{ inputs.username }}
         PASSWORD: ${{ inputs.password }}
-      run: 'printf "%s" "$PASSWORD" | helm registry login "$REGISTRY" --username "$USERNAME" --password-stdin'
+      run: '$env:PASSWORD | helm registry login $env:REGISTRY --username $env:USERNAME --password-stdin'
     - name: Build, package, and optionally push chart
-      shell: bash
+      shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_CHART_DIRECTORY: ${{ steps.prepare.outputs.chart-directory }}
@@ -79,4 +79,4 @@ runs:
         INPUT_REGISTRY: ${{ inputs.registry }}
         INPUT_REPOSITORY: ${{ inputs.repository }}
         REPOSITORY_OWNER: ${{ github.repository_owner }}
-      run: 'bash "$ACTION_PATH/helm-transaction.sh"'
+      run: '& "$env:ACTION_PATH/helm-transaction.ps1"'

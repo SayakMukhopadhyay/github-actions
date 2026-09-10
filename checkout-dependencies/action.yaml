@@ -29,21 +29,13 @@ runs:
   using: composite
   steps:
     - name: Validate dependency configuration
-      shell: bash
+      shell: pwsh
       env:
+        ACTION_PATH: ${{ github.action_path }}
         INPUT_GO_VERSION: ${{ inputs.go-version }}
         INPUT_NODE_VERSION: ${{ inputs.node-version }}
         INPUT_NODE_VERSION_FILE: ${{ inputs.node-version-file }}
-      run: |
-        set -euo pipefail
-        if [[ -n $INPUT_NODE_VERSION && -n $INPUT_NODE_VERSION_FILE ]]; then
-          printf 'node-version and node-version-file are mutually exclusive; provide exactly one to enable Node.js.\n' >&2
-          exit 1
-        fi
-        if [[ -z $INPUT_GO_VERSION && -z $INPUT_NODE_VERSION && -z $INPUT_NODE_VERSION_FILE ]]; then
-          printf 'configure at least one ecosystem with go-version, node-version, or node-version-file.\n' >&2
-          exit 1
-        fi
+      run: '& "$env:ACTION_PATH/validate-configuration.ps1"'
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -57,7 +49,7 @@ runs:
         cache-dependency-path: ${{ format('{0}/go.sum', inputs.go-working-directory != '' && inputs.go-working-directory || inputs.working-directory) }}
     - name: Download Go dependencies
       if: inputs.go-version != ''
-      shell: bash
+      shell: pwsh
       working-directory: ${{ inputs.go-working-directory != '' && inputs.go-working-directory || inputs.working-directory }}
       run: go mod download
     - name: Set up Node.js
@@ -70,6 +62,6 @@ runs:
         cache-dependency-path: ${{ format('{0}/package-lock.json', inputs.node-working-directory != '' && inputs.node-working-directory || inputs.working-directory) }}
     - name: Install npm dependencies
       if: inputs.node-version != '' || inputs.node-version-file != ''
-      shell: bash
+      shell: pwsh
       working-directory: ${{ inputs.node-working-directory != '' && inputs.node-working-directory || inputs.working-directory }}
       run: npm ci

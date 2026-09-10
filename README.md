@@ -30,7 +30,7 @@ The action is read-only and requires the caller's checkout to have `contents: re
 
 ## `is-file-changed`
 
-`SayakMukhopadhyay/github-actions/is-file-changed@v1` is a composite action. Its shell collector obtains the complete push range, including multi-commit and force pushes, initial pushes, deletes, renames, and copies. Its TypeScript implementation compiles `pattern` with JavaScript's `RegExp` constructor and tests both sides of rename and copy records.
+`SayakMukhopadhyay/github-actions/is-file-changed@v1` is a composite action. Its PowerShell collector obtains the complete push range, including multi-commit and force pushes, initial pushes, deletes, renames, and copies. Its TypeScript implementation compiles `pattern` with JavaScript's `RegExp` constructor and tests both sides of rename and copy records.
 
 ```yaml
 - id: version-changed
@@ -332,7 +332,8 @@ steps:
 
   - if: steps.release-tag.outputs.tags-exist == 'false'
     # Start the release path that creates the tag.
-    run: ./start-release.sh
+    shell: pwsh
+    run: ./start-release.ps1
 ```
 
 ```yaml
@@ -358,7 +359,7 @@ The checkout and remote Git operations receive `token` without persisting creden
 
 ## `create-release`
 
-`SayakMukhopadhyay/github-actions/create-release@v1` combines explicit shell boundaries for local Git context and GitHub publication with a bundled TypeScript release-note generator. The action targets the current `github.repository` and has exactly four required inputs: `token`, `tag-name`, `release-name`, and `openai-api-key`.
+`SayakMukhopadhyay/github-actions/create-release@v1` combines explicit PowerShell boundaries for local Git context and GitHub publication with a bundled TypeScript release-note generator. The action targets the current `github.repository` and has exactly four required inputs: `token`, `tag-name`, `release-name`, and `openai-api-key`.
 
 ```yaml
 permissions:
@@ -421,45 +422,45 @@ The wrapper references SchemaStore's live workflow schema and the committed `sch
 
 ## Development
 
-The repository is one npm package and does not use workspaces. Each executable action keeps its TypeScript entry point, `action.yaml`, and generated `dist/index.mjs` together:
+The repository is one npm package and does not use workspaces. JavaScript actions keep their TypeScript entry point, `action.yaml`, and generated `dist/index.mjs` together; maintained command transactions use PowerShell 7.4 or newer:
 
 - `check-version/`, `validate-static-site/`, and `dispatch-pages-deployment/` are directly callable as JavaScript actions.
 - `actions/is-file-changed/`, `actions/bump-version/`, `actions/helm-package-push/`, and `actions/create-release/` are implementation actions invoked by their root-level composite wrappers.
 - `tooling/` contains repository-maintenance programs such as schema generation.
 
-There is no general shared-code directory. Common modules should be extracted only after two implemented actions demonstrate identical behavior.
+`powershell/ActionRuntime.psm1` is intentionally narrow: native process execution, GitHub workflow protocol helpers, single-line validation, and contained temporary cleanup. Git, Helm, release, container, and deployment transactions remain action-local modules.
 
-Install the exact locked dependencies with Node `24.20.0`:
+Install the exact locked dependencies, pinned PowerShell modules, and verified native tools with Node `24.20.0` and PowerShell 7.4 or newer:
 
-```shell
-npm ci
+```powershell
+./build.ps1 Bootstrap
 ```
 
 The main development checks are:
 
-```shell
-npm run typecheck
-npm run lint
-npm run format:check
-npm run test:node
-npm run test:shell
-npm run schema:generate
-npm run bundle
+```powershell
+./build.ps1 FormatCheck
+./build.ps1 Lint
+./build.ps1 TypeCheck
+./build.ps1 Test
+./build.ps1 Generate
+./build.ps1 Bundle
+./build.ps1 Validate
 ```
 
-The nine `bundle:<action>` scripts call Rolldown directly and can be run individually. No custom TypeScript bundle driver is used.
+`build.ps1` is the canonical development interface. Bootstrap is explicit; validation never silently downloads dependencies or tools.
 
-TypeScript in this repository—production actions, tooling, and tests—must never spawn an external process. It may parse files and use JavaScript facilities such as the `RegExp` constructor. Git, Helm, `yq`, and GitHub CLI transactions belong in checked shell files or composite steps. Shell integration tests invoke those command boundaries directly rather than through Node.
+TypeScript in this repository—production actions, tooling, and tests—must never spawn an external process. It may parse files and use JavaScript facilities such as the `RegExp` constructor. Git, Helm, `yq`, and GitHub CLI transactions belong in checked PowerShell modules or composite steps. Pester tests invoke those command boundaries directly and use real temporary Git repositories where transaction behavior matters.
 
-Node tests and shell fixtures are hermetic and credential-free. They use temporary repositories, local charts, stubbed executables, injected OpenAI clients, and captured GitHub output files. They never publish a container or chart, mutate a live Git remote, create a GitHub Release, call OpenAI, or contact a cluster.
+Node and Pester tests are hermetic and credential-free. They use temporary repositories, local charts, mocks, injected OpenAI clients, and captured GitHub output files. They never publish a container or chart, mutate a live remote, create a GitHub Release, call OpenAI, or contact a cluster.
 
 ## Generated artifacts
 
 TypeScript sources, public and implementation metadata, ESM bundles, external source maps, generated schemas, package metadata, and the npm lockfile are committed together. After changing source or metadata, regenerate the affected artifacts and inspect the exact diff:
 
-```shell
-npm run schema:generate
-npm run bundle
+```powershell
+./build.ps1 Generate
+./build.ps1 Bundle
 git diff --check
 ```
 
@@ -469,7 +470,7 @@ Licensed dependency metadata lives under `.licenses/npm` and is governed by `.li
 
 ## CI and v1 promotion
 
-Ubuntu CI runs TypeScript, ESLint, Prettier, pure Node tests, shell integration tests, Ajv schema fixtures, deterministic bundle/schema drift checks, bundle syntax smoke checks, ShellCheck, attestation-verified actionlint, offline Zizmor, Licensed, and credential-free dependency/static-site/container/Helm action fixtures. External actions use reviewed full commit SHAs. Dependabot opens weekly npm and GitHub Actions pull requests; updates are never automerged.
+Windows and Ubuntu CI run TypeScript, ESLint, Prettier, PSScriptAnalyzer, Node tests, Pester, typechecking, and bundling. Ubuntu remains authoritative for generated-artifact drift, actionlint, offline Zizmor, Licensed, security policy, and credential-free action fixtures. External actions use reviewed full commit SHAs. Dependabot opens weekly npm and GitHub Actions pull requests; updates are never automerged.
 
 Source changes do not move `v1`. To promote or intentionally roll back, manually run the **Promote v1** workflow with a full 40-character commit SHA from `main`. It verifies that exact commit is reachable from `main`, then moves the lightweight `v1` tag with force-with-lease protection. The promotion job alone receives `contents: write`; no semver tag or GitHub Release is created for this action repository.
 

@@ -56,7 +56,7 @@ runs:
         runner-temp: ${{ runner.temp }}
     - id: verify
       name: Verify deployment
-      shell: bash
+      shell: pwsh
       env:
         ARGOCD_CLI_PATH: ${{ steps.cli.outputs.cli-path }}
         GITOPS_CHECKOUT_PATH: .argocd-verify-deployment/gitops
@@ -68,4 +68,4 @@ runs:
         INPUT_EXPECTED_COMMIT_SHA: ${{ inputs.expected-commit-sha }}
         INPUT_TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
         INPUT_SMOKE_URL: ${{ inputs.smoke-url }}
-      run: 'bash "$GITHUB_ACTION_PATH/verify-deployment.sh"'
+      run: '& "$env:GITHUB_ACTION_PATH/verify-deployment.ps1"'

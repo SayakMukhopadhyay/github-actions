@@ -167,9 +167,10 @@ void test('Helm delivery TypeScript never invokes external commands', () => {
   assert.doesNotMatch(source, commandExecutionApi);
 });
 
-void test('container-build-push keeps preparation inline and omits an empty auth token', () => {
+void test('container-build-push uses action-local preparation and omits an empty auth token', () => {
   const metadata = readFileSync(join(import.meta.dirname, '..', 'container-build-push', 'action.yaml'), 'utf8');
 
+  assert.match(metadata, new RegExp(String.raw`prepare-build\.ps1`, 'u'));
   assert.doesNotMatch(metadata, new RegExp(String.raw`prepare\.sh`, 'u'));
   assert.match(metadata, new RegExp(String.raw`secrets: \$\{\{ inputs\.auth-token != ''`, 'u'));
 });

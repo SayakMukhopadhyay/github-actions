@@ -22,7 +22,7 @@ runs:
   using: composite
   steps:
     - name: Validate push range
-      shell: bash
+      shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
         EVENT_NAME: ${{ github.event_name }}
@@ -30,7 +30,7 @@ runs:
         HEAD_SHA: ${{ github.event.after }}
         BASE_REF: ${{ inputs.base-ref }}
         HEAD_REF: ${{ inputs.head-ref }}
-      run: 'bash "$ACTION_PATH/collect-changed-files.sh" validate'
+      run: '& "$env:ACTION_PATH/collect-changed-files.ps1" validate'
     - name: Checkout repository history
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
@@ -42,7 +42,7 @@ runs:
         token: ${{ inputs.token }}
     - id: detect
       name: Collect changed paths
-      shell: bash
+      shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
         EVENT_NAME: ${{ github.event_name }}
@@ -50,7 +50,7 @@ runs:
         HEAD_SHA: ${{ github.event.after }}
         BASE_REF: ${{ inputs.base-ref }}
         HEAD_REF: ${{ inputs.head-ref }}
-      run: 'bash "$ACTION_PATH/collect-changed-files.sh" collect'
+      run: '& "$env:ACTION_PATH/collect-changed-files.ps1" collect'
     - id: match
       name: Detect changed paths
       uses: $/actions/is-file-changed

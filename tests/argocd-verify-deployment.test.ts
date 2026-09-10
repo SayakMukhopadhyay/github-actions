@@ -106,12 +106,12 @@ void test('keeps the public action contract narrow and read-only', () => {
   assert.equal(steps[0]?.with?.['persist-credentials'], false);
   assert.equal(steps[1]?.uses, '$/actions/argocd-verify-deployment');
 
-  const transaction = readFileSync(path.join(root, 'argocd-verify-deployment', 'verify-deployment.sh'), 'utf8');
+  const transaction = readFileSync(path.join(root, 'argocd-verify-deployment', 'VerifyDeployment.psm1'), 'utf8');
 
   assert.match(transaction, /--grpc-web/u);
   assert.match(transaction, /CF-Access-Client-Id/u);
   assert.match(transaction, /CF-Access-Client-Secret/u);
-  assert.match(transaction, /merge-base --is-ancestor/u);
+  assert.match(transaction, /merge-base.+--is-ancestor/su);
   assert.doesNotMatch(
     transaction,
     /\bapp (?:sync|refresh)\b|\bgit(?:\s+-C\s+"[^"]+")?\s+(?:commit|push)\b|\bkubectl\b/u,

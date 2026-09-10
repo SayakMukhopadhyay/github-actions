@@ -15,12 +15,16 @@ concurrency:
 
 jobs:
   validation:
-    name: Source, generated artifacts, and tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: Validation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     permissions:
       attestations: read
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,109 +39,35 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Set up Helm
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-        with:
-          version: v4.2.4
-
-      - name: Checkout Bats
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: bats-core/bats-core
-          ref: eb7f42f8d608ac693d7a4b67474f6714ea68cfc5 # v1.14.0
-          path: .tools/bats
-          persist-credentials: false
-
-      - name: Add Bats to PATH
-        run: echo "$GITHUB_WORKSPACE/.tools/bats/bin" >>"$GITHUB_PATH"
-
-      - name: Type-check TypeScript
-        run: npm run typecheck
-
-      - name: Lint TypeScript
-        run: npm run lint
-
-      - name: Check formatting
-        run: npm run format:check
-
-      - name: Run pure Node.js tests
-        run: npm run test:node
-
-      - name: Run shell integration tests
-        run: npm run test:shell
-
-      - name: Regenerate consumer action schema
-        run: npm run schema:generate
-
-      - name: Reject consumer schema drift
-        run: git diff --exit-code -- schemas/action-inputs.schema.json
-
-      - name: Rebuild ESM action bundles
-        run: npm run bundle
-
-      - name: Reject action bundle drift
-        run: >-
-          git diff --exit-code --
-          check-version/dist
-          validate-static-site/dist
-          dispatch-pages-deployment/dist
-          actions/is-file-changed/dist
-          actions/bump-version/dist
-          actions/helm-package-push/dist
-          actions/helm-deployment-state/dist
-          actions/argocd-verify-deployment/dist
-          actions/create-release/dist
-
-      - name: Smoke-check ESM action bundles
-        run: |
-          node --check check-version/dist/index.mjs
-          node --check validate-static-site/dist/index.mjs
-          node --check dispatch-pages-deployment/dist/index.mjs
-          node --check actions/is-file-changed/dist/index.mjs
-          node --check actions/bump-version/dist/index.mjs
-          node --check actions/helm-package-push/dist/index.mjs
-          node --check actions/helm-deployment-state/dist/index.mjs
-          node --check actions/argocd-verify-deployment/dist/index.mjs
-          node --check actions/create-release/dist/index.mjs
-
-      - name: Lint shell scripts
-        run: |
-          mapfile -d '' shell_files < <(
-            find . -type f -name '*.sh' \
-              -not -path './.git/*' \
-              -not -path './.tools/*' \
-              -not -path './node_modules/*' \
-              -print0
-          )
-          shellcheck --external-sources --source-path=SCRIPTDIR "${shell_files[@]}"
-
-      - name: Install actionlint
+      - name: Bootstrap locked dependencies
+        shell: pwsh
         env:
-          ACTIONLINT_VERSION: 1.7.12
           GH_TOKEN: ${{ github.token }}
-        run: |
-          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          mkdir -p "$RUNNER_TEMP/actionlint-bin"
-          gh release download "v$ACTIONLINT_VERSION" \
-            --repo rhysd/actionlint \
-            --pattern "$archive" \
-            --dir "$RUNNER_TEMP/actionlint-bin"
-          gh attestation verify "$RUNNER_TEMP/actionlint-bin/$archive" --repo rhysd/actionlint
-          tar -xzf "$RUNNER_TEMP/actionlint-bin/$archive" -C "$RUNNER_TEMP/actionlint-bin" actionlint
+        run: ./build.ps1 Bootstrap
 
-      - name: Lint workflows
-        run: '"$RUNNER_TEMP/actionlint-bin/actionlint"'
+      - name: Validate source and tests on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./build.ps1 FormatCheck
+          ./build.ps1 Lint
+          ./build.ps1 TypeCheck
+          ./build.ps1 Test
+          ./build.ps1 Bundle
+
+      - name: Validate source, tests, policies, and generated artifacts
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: ./build.ps1 Validate
 
       - name: Require a clean validated tree
+        shell: pwsh
         run: |
-          if [[ -n $(git status --porcelain --untracked-files=all) ]]; then
+          $status = git status --porcelain --untracked-files=all
+          if ($status) {
             git status --short --untracked-files=all
-            printf 'Validation changed the tree. Commit every generated artifact.\n' >&2
-            exit 1
-          fi
+            throw 'Validation changed the tree. Commit every generated artifact.'
+          }
 
   security:
     name: GitHub Actions security
@@ -174,6 +104,7 @@ jobs:
           cache: npm
 
       - name: Install npm dependencies
+        shell: pwsh
         run: npm ci
 
       - name: Set up Ruby
@@ -187,6 +118,7 @@ jobs:
           version: 5.1.0
 
       - name: Check cached dependency licenses
+        shell: pwsh
         run: licensed status
 
   action-level:

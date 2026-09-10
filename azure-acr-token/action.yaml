@@ -31,8 +31,8 @@ runs:
         subscription-id: ${{ inputs.subscription-id }}
     - name: Expose Azure Container Registry token
       id: token
-      shell: bash
+      shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_LOGIN_SERVER: ${{ inputs.login-server }}
-      run: 'bash "$ACTION_PATH/azure-acr-token.sh"'
+      run: '& "$env:ACTION_PATH/azure-acr-token.ps1"'

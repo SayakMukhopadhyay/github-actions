@@ -41,24 +41,24 @@ runs:
 
     - id: context
       name: Collect release context
-      shell: bash
+      shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_PATHSPECS: ${{ inputs.pathspecs }}
         INPUT_TAG_NAME: ${{ inputs.tag-name }}
         TARGET_REPOSITORY: ${{ github.repository }}
         TARGET_SERVER_URL: ${{ github.server_url }}
-      run: 'bash "$ACTION_PATH/collect-git-context.sh"'
+      run: '& "$env:ACTION_PATH/collect-git-context.ps1"'
 
     - id: preflight
       name: Return an existing GitHub Release
-      shell: bash
+      shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_TOKEN: ${{ inputs.token }}
         FACTS_FILE: ${{ steps.context.outputs.facts-file }}
         PUBLISH_MODE: check
-      run: 'bash "$ACTION_PATH/publish-release.sh"'
+      run: '& "$env:ACTION_PATH/publish-release.ps1"'
 
     - name: Generate and render release notes
       if: steps.preflight.outputs.release-exists != 'true'
@@ -72,7 +72,7 @@ runs:
     - id: publish
       name: Publish or find the GitHub Release
       if: steps.preflight.outputs.release-exists != 'true'
-      shell: bash
+      shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_TOKEN: ${{ inputs.token }}
@@ -80,13 +80,13 @@ runs:
         FACTS_FILE: ${{ steps.context.outputs.facts-file }}
         BODY_FILE: ${{ steps.context.outputs.body-file }}
         PUBLISH_MODE: publish
-      run: 'bash "$ACTION_PATH/publish-release.sh"'
+      run: '& "$env:ACTION_PATH/publish-release.ps1"'
 
     - name: Clean up release session
       if: always()
-      shell: bash
+      shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
         RUNNER_TEMP: ${{ runner.temp }}
         SESSION_DIRECTORY: ${{ steps.context.outputs.session-directory }}
-      run: 'bash "$ACTION_PATH/cleanup-release-session.sh"'
+      run: '& "$env:ACTION_PATH/cleanup-release-session.ps1"'

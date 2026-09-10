@@ -33,10 +33,10 @@ runs:
         persist-credentials: true
         token: ${{ inputs.token }}
     - name: Verify clean checkout
-      shell: bash
+      shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
-      run: 'bash "$ACTION_PATH/git-transaction.sh" check-clean'
+      run: '& "$env:ACTION_PATH/git-transaction.ps1" check-clean'
     - id: mutate
       name: Mutate selected versions
       uses: $/actions/bump-version
@@ -46,7 +46,7 @@ runs:
         helm: ${{ inputs.helm }}
         go: ${{ inputs.go }}
     - name: Commit and push versions
-      shell: bash
+      shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
@@ -55,4 +55,4 @@ runs:
         NEW_APPLICATION_VERSION: ${{ steps.mutate.outputs.application-version }}
         NEW_CHART_VERSION: ${{ steps.mutate.outputs.chart-version }}
         TARGET_REF: ${{ github.ref_name }}
-      run: 'bash "$ACTION_PATH/git-transaction.sh" commit'
+      run: '& "$env:ACTION_PATH/git-transaction.ps1" commit'
