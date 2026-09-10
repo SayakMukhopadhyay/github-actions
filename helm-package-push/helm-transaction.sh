@@ -18,7 +18,7 @@ runner_temp=$(realpath -e -- "${RUNNER_TEMP:?RUNNER_TEMP is required}")
 chart_name=${INPUT_CHART_NAME:?chart-name is required}
 chart_version=${INPUT_CHART_VERSION:?chart-version is required}
 [[ "$chart_name" != -* && "$chart_name" != */* && "$chart_name" != *$'\n'* ]] || fail "chart-name is unsafe"
-[[ "$chart_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9a-f]{40})?$ ]] || fail "chart-version is invalid"
+[[ "$chart_version" =~ ^((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)|0\.0\.0-build-[0-9a-f]{40})$ ]] || fail "chart-version is invalid"
 
 cd -- "$chart"
 while IFS= read -r -d '' name; do

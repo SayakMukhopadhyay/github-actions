@@ -231,3 +231,7 @@ AgentNotes
 !validate-static-site/dist/**
 !dispatch-pages-deployment/dist/
 !dispatch-pages-deployment/dist/**
+!actions/argocd-verify-deployment/dist/
+!actions/argocd-verify-deployment/dist/**
+!actions/helm-deployment-state/dist/
+!actions/helm-deployment-state/dist/**

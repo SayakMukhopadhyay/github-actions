@@ -1,8 +1,8 @@
 # Personal GitHub Actions
 
-Fifteen GitHub Actions for Go and npm dependencies, Azure registry authentication, static-site delivery, container images, Helm charts, immutable release tags, GitOps promotion, and GitHub Releases. Workflow orchestration stays in composite actions; parsing, validation, API calls, and file mutation that benefit from structured code are authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
+Seventeen GitHub Actions for Go and npm dependencies, Azure registry authentication, static-site delivery, container images, Helm charts, immutable release tags, GitHub Releases, and GitOps inspection, promotion, and deployment verification. Workflow orchestration stays in composite actions; parsing, validation, API calls, and file mutation that benefit from structured code are authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
 
-The moving `@v1` release contains all fifteen actions documented here.
+The moving `@v1` release contains all seventeen actions documented here.
 
 ## Input conventions
 
@@ -14,7 +14,7 @@ The moving `@v1` release contains all fifteen actions documented here.
 
 ## `check-version`
 
-`SayakMukhopadhyay/github-actions/check-version@v1` always validates the root application `VERSION`. With `helm: true`, it also validates the independent `charts/VERSION`, `Chart.yaml.version`, and `Chart.yaml.appVersion`.
+`SayakMukhopadhyay/github-actions/check-version@v1` always validates the canonical root application `VERSION`. With `helm: true`, it also validates the canonical `charts/VERSION`, requires `Chart.yaml.version` to match it, and requires `Chart.yaml.appVersion` to exist as a scalar without requiring it to match the application version.
 
 ```yaml
 - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,7 +43,7 @@ Inputs are `pattern` and optional `token`; output is `changed`. It supports `pus
 
 ## `bump-version`
 
-`SayakMukhopadhyay/github-actions/bump-version@v1` keeps independent `go` and `helm` selectors. Go-only bumps the application authority, Helm-only bumps the independent chart authority, and selecting both also synchronizes `Chart.yaml.appVersion`.
+`SayakMukhopadhyay/github-actions/bump-version@v1` keeps independent `go` and `helm` selectors. Go-only bumps the root application authority without changing chart metadata. Helm-only bumps `charts/VERSION` and `Chart.yaml.version` while synchronizing `Chart.yaml.appVersion` to the current root `VERSION`. Selecting both bumps both authorities and sets `appVersion` to the new root version.
 
 ```yaml
 permissions:
@@ -226,11 +226,32 @@ Registry authentication failures, rejected tag writes, and other Docker command 
     push: 'false'
 ```
 
-For publication, provide `username` and `password`. Outputs are `chart-name` and `chart-version`.
+For development packages, `chart-version` is exactly `0.0.0-build-<full lowercase commit SHA>` and is independent of `charts/VERSION`. For stable packages, it equals `charts/VERSION`. For publication, provide `username` and `password`. Outputs are `chart-name` and `chart-version`.
+
+## `helm-deployment-state`
+
+`SayakMukhopadhyay/github-actions/helm-deployment-state@v1` reads the selected dependency version and image tag from a Helm wrapper chart without running Helm or changing the target repository.
+
+```yaml
+permissions:
+  contents: read
+
+steps:
+  - id: deployment
+    uses: SayakMukhopadhyay/github-actions/helm-deployment-state@v1
+    with:
+      token: ${{ github.token }}
+      environment: production
+      chart-name: golfs
+```
+
+By default, the action checks out `main` from `SayakMukhopadhyay/k8s-landscape-charts` without persisting credentials, reads `<chart-name>/envs/<environment>/Chart.yaml` and `values.yaml`, and selects the one dependency whose name or alias equals `chart-name`. `dependency`, `target-repository`, `target-ref`, and `wrapper-chart-path` provide explicit overrides.
+
+The selected dependency's alias is its values root when present; otherwise its name is used. Outputs are `dependency-version`, `image-tag`, and `chart-source-ref`. A development dependency version of exactly `0.0.0-build-<full lowercase commit SHA>` yields the full SHA as `chart-source-ref`; a canonical stable `MAJOR.MINOR.PATCH` yields `chart-v<version>`. Paths outside the checkout, symlinked authority files, ambiguous dependencies, malformed mappings, empty values, and any other dependency version fail closed.
 
 ## `chart-update-deploy`
 
-`SayakMukhopadhyay/github-actions/chart-update-deploy@v1` promotes one Helm dependency in the personal GitOps repository or a caller-selected override.
+`SayakMukhopadhyay/github-actions/chart-update-deploy@v1` atomically promotes a Helm dependency version, its image tag, or both in the personal GitOps repository or a caller-selected override.
 
 ```yaml
 - uses: SayakMukhopadhyay/github-actions/chart-update-deploy@v1
@@ -238,16 +259,41 @@ For publication, provide `username` and `password`. Outputs are `chart-name` and
     token: ${{ steps.app-token.outputs.token }}
     environment: dev
     chart-name: golfs
-    chart-version: 0.7.5-${{ github.sha }}
+    chart-version: 0.0.0-build-${{ github.sha }}
+    image-tag: build-${{ github.sha }}
 ```
 
 The preferred `token` is a short-lived GitHub App installation token limited to the target repository with `contents: write`; a repository-limited fine-grained PAT is the fallback. Optional OCI authentication uses `registry`, `username`, and `password`.
 
-By default, the action updates `main` in `SayakMukhopadhyay/k8s-landscape-charts`, derives the wrapper chart path as `<chart-name>/envs/<environment>`, and updates a dependency with the same name as `chart-name`. `target-repository`, `target-ref`, `wrapper-chart-path`, and `dependency` remain available for repositories whose layout or dependency name differs.
+`chart-version` and `image-tag` are independently optional, but at least one is required. By default, the action updates `main` in `SayakMukhopadhyay/k8s-landscape-charts`, derives the wrapper chart path as `<chart-name>/envs/<environment>`, and selects the one dependency whose name or alias matches `chart-name`. `target-repository`, `target-ref`, `wrapper-chart-path`, and `dependency` remain available for repositories whose layout or dependency selector differs. When the dependency has an alias, the alias is the values root; otherwise the dependency name is used.
 
 The default path deliberately follows the BeezLabs first-party convention: each environment owns a complete wrapper chart and may therefore select different dependencies or dependency versions. Existing third-party wrappers that keep `Chart.yaml` directly under `<chart-name>` do not define the first-party pipeline contract; callers targeting one of those layouts must provide `wrapper-chart-path` explicitly.
 
-The action permits only the selected `Chart.yaml`, `Chart.lock`, and dependency archives to change, stages exactly those files, rejects stale no-ops, and relies on a normal non-force push to reject races.
+Supplying `chart-version` changes dependency metadata, `Chart.lock`, and the selected dependency's vendored archives only when the requested version differs. Supplying `image-tag` changes only the explicit `<values-root>.image.tag` in `values.yaml`. When both are supplied, both mutations are committed together. The `commit-sha` output is the pushed GitOps commit, or the current target HEAD for a genuine no-op.
+
+The action stages only the expected wrapper files and uses normal non-force pushes. If the target branch advances concurrently through unrelated files, it refreshes and reapplies the mutation once. A concurrent change to protected wrapper state, a divergent target branch, or a second failed push stops without forcing or overwriting the remote update.
+
+## `argocd-verify-deployment`
+
+`SayakMukhopadhyay/github-actions/argocd-verify-deployment@v1` waits for one Argo CD Application to become `Synced` and `Healthy`, then verifies that the expected GitOps commit is the reported synchronized revision or its Git ancestor. It uses Argo CD through gRPC-web and sends the supplied Cloudflare Access service-token headers on every Argo request.
+
+```yaml
+- id: deployment
+  uses: SayakMukhopadhyay/github-actions/argocd-verify-deployment@v1
+  with:
+    server: argocd.example.com
+    application: golfs-production
+    auth-token: ${{ secrets.ARGOCD_AUTH_TOKEN }}
+    cloudflare-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+    cloudflare-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+    expected-commit-sha: ${{ needs.promote.outputs.commit-sha }}
+    gitops-repository: SayakMukhopadhyay/k8s-landscape-charts
+    gitops-token: ${{ secrets.GITOPS_READ_TOKEN }}
+    timeout-seconds: '300'
+    smoke-url: https://golfs.example.com/health
+```
+
+The optional `smoke-url` receives the same Cloudflare Access headers and must return without an HTTP or network error. The action exposes `synchronized-revision`, supports Linux x64 runners, and installs Argo CD CLI `v3.5.2` from its versioned release URL only after verifying the pinned SHA-256 checksum. It is strictly read-only: it does not sync or refresh Argo CD, mutate GitOps state, commit, push, deploy, or access the cluster directly.
 
 ## `static-site-update-deploy`
 
@@ -401,7 +447,7 @@ npm run schema:generate
 npm run bundle
 ```
 
-The seven `bundle:<action>` scripts call Rolldown directly and can be run individually. No custom TypeScript bundle driver is used.
+The nine `bundle:<action>` scripts call Rolldown directly and can be run individually. No custom TypeScript bundle driver is used.
 
 TypeScript in this repository—production actions, tooling, and tests—must never spawn an external process. It may parse files and use JavaScript facilities such as the `RegExp` constructor. Git, Helm, `yq`, and GitHub CLI transactions belong in checked shell files or composite steps. Shell integration tests invoke those command boundaries directly rather than through Node.
 

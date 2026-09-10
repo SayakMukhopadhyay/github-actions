@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+printf '%s\n' "$@" > "$CURL_FAKE_LOG"
+exit "${CURL_FAKE_EXIT:-0}"

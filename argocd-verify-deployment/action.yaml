@@ -1,0 +1,71 @@
+name: Argo CD Verify Deployment
+description: Verify a healthy Argo CD deployment, its Git ancestry, and an optional authenticated smoke URL
+inputs:
+  server:
+    description: Argo CD server hostname
+    required: true
+  application:
+    description: Name of the Argo CD Application to verify
+    required: true
+  auth-token:
+    description: Argo CD authentication token with read access to the Application
+    required: true
+  cloudflare-access-client-id:
+    description: Cloudflare Access service-token client ID
+    required: true
+  cloudflare-access-client-secret:
+    description: Cloudflare Access service-token client secret
+    required: true
+  expected-commit-sha:
+    description: Full GitOps commit SHA expected to be synchronized or an ancestor of it
+    required: true
+  gitops-repository:
+    description: GitHub owner/repository containing the GitOps commit history
+    required: true
+  gitops-token:
+    description: Token with contents read permission for the GitOps repository
+    required: true
+  timeout-seconds:
+    description: Maximum seconds to wait for Argo CD and for an optional smoke request
+    required: false
+    default: '300'
+  smoke-url:
+    description: Optional HTTP URL to smoke-test through Cloudflare Access
+    required: false
+    default: ''
+outputs:
+  synchronized-revision:
+    description: Full Git revision reported by the synchronized Argo CD Application
+    value: ${{ steps.verify.outputs.synchronized-revision }}
+runs:
+  using: composite
+  steps:
+    - name: Checkout GitOps repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ inputs.gitops-repository }}
+        path: .argocd-verify-deployment/gitops
+        fetch-depth: 0
+        fetch-tags: false
+        persist-credentials: false
+        token: ${{ inputs.gitops-token }}
+    - id: cli
+      name: Install verified Argo CD CLI
+      uses: $/actions/argocd-verify-deployment
+      with:
+        runner-temp: ${{ runner.temp }}
+    - id: verify
+      name: Verify deployment
+      shell: bash
+      env:
+        ARGOCD_CLI_PATH: ${{ steps.cli.outputs.cli-path }}
+        GITOPS_CHECKOUT_PATH: .argocd-verify-deployment/gitops
+        INPUT_SERVER: ${{ inputs.server }}
+        INPUT_APPLICATION: ${{ inputs.application }}
+        INPUT_AUTH_TOKEN: ${{ inputs.auth-token }}
+        INPUT_CLOUDFLARE_ACCESS_CLIENT_ID: ${{ inputs.cloudflare-access-client-id }}
+        INPUT_CLOUDFLARE_ACCESS_CLIENT_SECRET: ${{ inputs.cloudflare-access-client-secret }}
+        INPUT_EXPECTED_COMMIT_SHA: ${{ inputs.expected-commit-sha }}
+        INPUT_TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        INPUT_SMOKE_URL: ${{ inputs.smoke-url }}
+      run: 'bash "$GITHUB_ACTION_PATH/verify-deployment.sh"'

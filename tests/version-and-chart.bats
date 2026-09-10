@@ -34,15 +34,25 @@ teardown() {
 	[[ "$output" == *"exactly one line"* ]]
 }
 
-@test "check-version supports spaces and reports exact chart mismatches" {
+@test "check-version supports spaces and accepts an independent scalar appVersion" {
 	project="$test_root/project with spaces"
 	cp -R "$repo_root/tests/fixtures/go-chart" "$project"
-	sed -i 's/appVersion: "1.2.3"/appVersion: "9.9.9"/' "$project/charts/Chart.yaml"
+	sed -i 's/appVersion: "1.2.3"/appVersion: "release candidate 7"/' "$project/charts/Chart.yaml"
+	run env GITHUB_WORKSPACE="$project" "INPUT_WORKING-DIRECTORY=." INPUT_HELM=true \
+		node "$repo_root/check-version/dist/index.mjs"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"Version metadata is consistent"* ]]
+}
+
+@test "check-version reports exact chart version mismatches" {
+	project="$test_root/project"
+	cp -R "$repo_root/tests/fixtures/go-chart" "$project"
+	sed -i 's/version: 0.4.0/version: 0.5.0/' "$project/charts/Chart.yaml"
 	run env GITHUB_WORKSPACE="$project" "INPUT_WORKING-DIRECTORY=." INPUT_HELM=true \
 		node "$repo_root/check-version/dist/index.mjs"
 	[ "$status" -ne 0 ]
-	[[ "$output" == *"$project/charts/Chart.yaml field appVersion mismatch"* ]]
-	[[ "$output" == *"expected '1.2.3', got '9.9.9'"* ]]
+	[[ "$output" == *"$project/charts/Chart.yaml field version mismatch"* ]]
+	[[ "$output" == *"expected '0.4.0', got '0.5.0'"* ]]
 }
 
 @test "check-version validates the Go authority without Helm" {

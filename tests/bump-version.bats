@@ -41,18 +41,30 @@ run_bump() {
 	[ "${changed[2]}" = charts/VERSION ]
 }
 
-@test "Helm-only bump preserves application authority and appVersion" {
+@test "Helm-only bump preserves application authority and synchronizes appVersion" {
+	sed -i 's/appVersion: "1.2.3"/appVersion: "9.9.9"/' "$repository/charts/Chart.yaml"
+	git -C "$repository" add charts/Chart.yaml
+	git -C "$repository" commit -q -m 'set independent app version'
+	git -C "$repository" push -q
+
 	run_bump true
 	[ "$status" -eq 0 ]
 	[ "$(cat "$repository/VERSION")" = 1.2.3 ]
 	[ "$(cat "$repository/charts/VERSION")" = 0.4.1 ]
 	grep -F 'appVersion: "1.2.3"' "$repository/charts/Chart.yaml"
+	mapfile -t changed < <(git -C "$repository" diff-tree --no-commit-id --name-only -r HEAD | sort)
+	[ "${#changed[@]}" -eq 2 ]
+	[ "${changed[0]}" = charts/Chart.yaml ]
+	[ "${changed[1]}" = charts/VERSION ]
 }
 
 @test "Go-only bump updates only the application authority" {
 	run_bump false true
 	[ "$status" -eq 0 ]
 	[ "$(cat "$repository/VERSION")" = 1.2.4 ]
+	[ "$(cat "$repository/charts/VERSION")" = 0.4.0 ]
+	grep -F 'version: 0.4.0' "$repository/charts/Chart.yaml"
+	grep -F 'appVersion: "1.2.3"' "$repository/charts/Chart.yaml"
 	mapfile -t changed < <(git -C "$repository" diff-tree --no-commit-id --name-only -r HEAD | sort)
 	[ "${#changed[@]}" -eq 1 ]
 	[ "${changed[0]}" = VERSION ]

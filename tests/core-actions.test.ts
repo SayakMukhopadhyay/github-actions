@@ -22,13 +22,18 @@ function temporaryDirectory(): string {
   return directory;
 }
 
-function writeChart(repository: string, applicationVersion = '1.2.3', chartVersion = '0.4.0'): void {
+function writeChart(
+  repository: string,
+  applicationVersion = '1.2.3',
+  chartVersion = '0.4.0',
+  chartApplicationVersion = applicationVersion,
+): void {
   mkdirSync(join(repository, 'charts'), { recursive: true });
   writeFileSync(join(repository, 'VERSION'), `${applicationVersion}\n`);
   writeFileSync(join(repository, 'charts', 'VERSION'), `${chartVersion}\n`);
   writeFileSync(
     join(repository, 'charts', 'Chart.yaml'),
-    `apiVersion: v2\nname: fixture\n# preserve this comment\nversion: ${chartVersion} # chart\nappVersion: "${applicationVersion}"\n`,
+    `apiVersion: v2\nname: fixture\n# preserve this comment\nversion: ${chartVersion} # chart\nappVersion: "${chartApplicationVersion}"\n`,
   );
 }
 
@@ -124,13 +129,13 @@ void test('TypeScript sources never import command-execution modules', () => {
 
 void test('check-version validates canonical application and Helm authorities', () => {
   const repository = temporaryDirectory();
-  writeChart(repository);
+  writeChart(repository, '1.2.3', '0.4.0', 'release candidate 7');
 
   checkVersion({ workspace: repository, workingDirectory: '.', helm: true });
   checkVersion({ workspace: repository, workingDirectory: '.', helm: false });
 });
 
-void test('check-version rejects noncanonical, multiline, escaping, and mismatched metadata', () => {
+void test('check-version rejects noncanonical, multiline, escaping, and mismatched chart versions', () => {
   const root = temporaryDirectory();
   const repository = join(root, 'repository');
   mkdirSync(repository);
@@ -150,11 +155,24 @@ void test('check-version rejects noncanonical, multiline, escaping, and mismatch
   writeChart(repository);
   writeFileSync(
     join(repository, 'charts', 'Chart.yaml'),
-    'apiVersion: v2\nname: fixture\nversion: 0.4.0\nappVersion: "9.9.9"\n',
+    'apiVersion: v2\nname: fixture\nversion: 0.5.0\nappVersion: "release candidate 7"\n',
   );
   assert.throws(
     () => checkVersion({ workspace: repository, workingDirectory: '.', helm: true }),
-    /appVersion mismatch.*expected '1\.2\.3', got '9\.9\.9'/,
+    /field version mismatch.*expected '0\.4\.0', got '0\.5\.0'/,
+  );
+});
+
+void test('check-version requires Chart.yaml.appVersion to exist as a scalar', () => {
+  const repository = temporaryDirectory();
+  writeChart(repository);
+  writeFileSync(
+    join(repository, 'charts', 'Chart.yaml'),
+    'apiVersion: v2\nname: fixture\nversion: 0.4.0\nappVersion:\n  channel: stable\n',
+  );
+  assert.throws(
+    () => checkVersion({ workspace: repository, workingDirectory: '.', helm: true }),
+    /could not read .*Chart\.yaml field appVersion/,
   );
 });
 
@@ -182,7 +200,7 @@ void test('version increments are canonical and do not lose integer precision', 
   assert.throws(() => incrementVersion('1.2.3', 'prerelease'), /increment must be patch, minor, or major/);
 });
 
-void test('bump-version mutates only selected authorities while preserving Chart.yaml formatting', () => {
+void test('bump-version combined selection mutates all authorities while preserving Chart.yaml formatting', () => {
   const repository = temporaryDirectory();
   writeChart(repository);
 
@@ -202,9 +220,9 @@ void test('bump-version mutates only selected authorities while preserving Chart
   );
 });
 
-void test('bump-version preserves Helm-only, Go-only, and no-target behavior', () => {
+void test('bump-version chart-only selection synchronizes appVersion to the current application authority', () => {
   const helmOnly = temporaryDirectory();
-  writeChart(helmOnly);
+  writeChart(helmOnly, '1.2.3', '0.4.0', '9.9.9');
   assert.deepEqual(
     mutateVersions({
       workspace: helmOnly,
@@ -219,10 +237,17 @@ void test('bump-version preserves Helm-only, Go-only, and no-target behavior', (
     },
   );
   assert.equal(readFileSync(join(helmOnly, 'VERSION'), 'utf8'), '1.2.3\n');
-  assert.match(readFileSync(join(helmOnly, 'charts', 'Chart.yaml'), 'utf8'), /appVersion: "1\.2\.3"/);
+  assert.equal(readFileSync(join(helmOnly, 'charts', 'VERSION'), 'utf8'), '0.5.0\n');
+  assert.equal(
+    readFileSync(join(helmOnly, 'charts', 'Chart.yaml'), 'utf8'),
+    'apiVersion: v2\nname: fixture\n# preserve this comment\nversion: 0.5.0 # chart\nappVersion: "1.2.3"\n',
+  );
+});
 
+void test('bump-version application-only selection mutates only the root authority', () => {
   const goOnly = temporaryDirectory();
-  writeChart(goOnly);
+  writeChart(goOnly, '1.2.3', '0.4.0', '9.9.9');
+  const originalChart = readFileSync(join(goOnly, 'charts', 'Chart.yaml'), 'utf8');
   assert.deepEqual(
     mutateVersions({
       workspace: goOnly,
@@ -236,7 +261,12 @@ void test('bump-version preserves Helm-only, Go-only, and no-target behavior', (
       chartVersion: '',
     },
   );
+  assert.equal(readFileSync(join(goOnly, 'VERSION'), 'utf8'), '2.0.0\n');
   assert.equal(readFileSync(join(goOnly, 'charts', 'VERSION'), 'utf8'), '0.4.0\n');
+  assert.equal(readFileSync(join(goOnly, 'charts', 'Chart.yaml'), 'utf8'), originalChart);
+});
+
+void test('bump-version preserves no-target behavior', () => {
   assert.deepEqual(
     mutateVersions({
       workspace: join(temporaryDirectory(), 'missing'),

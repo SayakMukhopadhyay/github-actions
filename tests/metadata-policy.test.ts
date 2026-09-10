@@ -266,12 +266,17 @@ void test('Pages deployment metadata keeps dispatch and publication contracts na
 
 void test('chart promotion metadata exposes personal defaults with explicit overrides', () => {
   const metadata = readAction('chart-update-deploy');
+  assert.equal(metadata.inputs?.['chart-version']?.required, false);
+  assert.equal(metadata.inputs?.['chart-version']?.default, '');
+  assert.equal(metadata.inputs?.['image-tag']?.required, false);
+  assert.equal(metadata.inputs?.['image-tag']?.default, '');
   assert.equal(metadata.inputs?.dependency?.required, false);
   assert.equal(metadata.inputs?.dependency?.default, '');
   assert.equal(metadata.inputs?.['target-repository']?.required, false);
   assert.equal(metadata.inputs?.['target-repository']?.default, 'SayakMukhopadhyay/k8s-landscape-charts');
   assert.equal(metadata.inputs?.['target-ref']?.default, 'main');
   assert.equal(metadata.inputs?.['wrapper-chart-path']?.default, '');
+  assert.equal(metadata.outputs?.['commit-sha']?.value, '${{ steps.update.outputs.commit-sha }}');
 });
 
 void test('static-site promotion metadata keeps the fixed dependency contract narrow', () => {

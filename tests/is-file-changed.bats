@@ -24,6 +24,18 @@ detect() {
 	run env GITHUB_WORKSPACE="$repository" GITHUB_OUTPUT="$output_file" EVENT_NAME=push BASE_SHA="$base" HEAD_SHA="$head" INPUT_PATTERN="$pattern" bash "$repo_root/tests/fixtures/core-actions/run-is-file-changed.sh" "$repo_root"
 }
 
+detect_explicit() {
+	local base=$1 head=$2 pattern=$3
+	output_file="$test_root/output"
+	: >"$output_file"
+	run env GITHUB_WORKSPACE="$repository" GITHUB_OUTPUT="$output_file" EVENT_NAME=workflow_dispatch BASE_REF="$base" HEAD_REF="$head" INPUT_PATTERN="$pattern" bash "$repo_root/tests/fixtures/core-actions/run-is-file-changed.sh" "$repo_root"
+}
+
+validate_range() {
+	local base=$1 head=$2
+	run env EVENT_NAME=workflow_dispatch BASE_REF="$base" HEAD_REF="$head" bash "$repo_root/is-file-changed/collect-changed-files.sh" validate
+}
+
 changed_value() {
 	awk '
 		/^changed=/ { print substr($0, length("changed=") + 1); exit }
@@ -48,6 +60,29 @@ assert_changed() {
 	git -C "$repository" add . && git -C "$repository" commit -q -m version
 	head=$(git -C "$repository" rev-parse HEAD)
 	detect "$initial" "$head" '^VERSION$'
+	[ "$status" -eq 0 ]
+	assert_changed true
+}
+
+@test "explicit refs compare complete multi-commit ranges outside push events" {
+	printf 'middle\n' >"$repository/other.txt"
+	git -C "$repository" add . && git -C "$repository" commit -q -m middle
+	printf '1.2.3\n' >"$repository/VERSION"
+	git -C "$repository" add . && git -C "$repository" commit -q -m version
+	head=$(git -C "$repository" rev-parse HEAD)
+
+	detect_explicit "$initial" "$head" '^VERSION$'
+	[ "$status" -eq 0 ]
+	assert_changed true
+}
+
+@test "explicit stable tag bases resolve as commits" {
+	git -C "$repository" tag chart-v1.2.3 "$initial"
+	printf '1.2.3\n' >"$repository/VERSION"
+	git -C "$repository" add . && git -C "$repository" commit -q -m version
+	head=$(git -C "$repository" rev-parse HEAD)
+
+	detect_explicit chart-v1.2.3 "$head" '^VERSION$'
 	[ "$status" -eq 0 ]
 	assert_changed true
 }
@@ -124,6 +159,32 @@ assert_changed() {
 	head=$(git -C "$repository" rev-parse HEAD)
 	detect 1111111111111111111111111111111111111111 "$head" '^VERSION$'
 	[ "$status" -ne 0 ]
-	[[ "$output" == *"could not fetch base commit"* ]]
+	[[ "$output" == *"could not resolve or fetch base ref"* ]]
 	[[ "$output" == *"ensure the token can read the repository"* ]]
+}
+
+@test "explicit refs must be a complete pair" {
+	validate_range "$initial" ''
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"base-ref and head-ref must be provided together"* ]]
+
+	validate_range '' "$initial"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"base-ref and head-ref must be provided together"* ]]
+}
+
+@test "explicit refs reject invalid syntax and zero head IDs" {
+	validate_range 'chart-v1.2.3^{commit}' "$initial"
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"base-ref must be a full commit object ID or valid Git ref"* ]]
+
+	validate_range "$initial" 0000000000000000000000000000000000000000
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"head-ref must not be a zero object ID"* ]]
+}
+
+@test "explicit refs reject missing commit objects" {
+	detect_explicit 1111111111111111111111111111111111111111 "$initial" '^VERSION$'
+	[ "$status" -ne 0 ]
+	[[ "$output" == *"could not resolve or fetch base ref"* ]]
 }

@@ -123,12 +123,9 @@ export function mutateVersions(options: MutateVersionsOptions): MutationResult {
     chartVersion = readCanonicalVersion(chartVersionFile, 'chart version', project);
     const { document } = readChart(chartFile, project);
     const actualChartVersion = chartScalar(document, chartFile, 'version');
-    const actualApplicationVersion = chartScalar(document, chartFile, 'appVersion');
+    chartScalar(document, chartFile, 'appVersion');
     if (actualChartVersion !== chartVersion) {
       fail(`${chartFile} field version does not match ${chartVersionFile}`);
-    }
-    if (actualApplicationVersion !== applicationVersion) {
-      fail(`${chartFile} field appVersion does not match ${applicationFile}`);
     }
   }
 
@@ -140,10 +137,10 @@ export function mutateVersions(options: MutateVersionsOptions): MutationResult {
   }
   if (options.helm) {
     writeFileSync(chartVersionFile, `${newChartVersion}\n`, 'utf8');
-    const replacements = new Map<string, string>([['version', newChartVersion]]);
-    if (options.go) {
-      replacements.set('appVersion', newApplicationVersion);
-    }
+    const replacements = new Map<string, string>([
+      ['version', newChartVersion],
+      ['appVersion', options.go ? newApplicationVersion : applicationVersion],
+    ]);
     patchChartScalars(chartFile, project, replacements);
   }
 

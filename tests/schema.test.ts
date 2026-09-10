@@ -32,7 +32,7 @@ void before(async () => {
 void test('accepts valid inputs for each documented consumer action', async () => {
   const validActions: [string, Record<string, string>][] = [
     ['check-version', {}],
-    ['is-file-changed', { pattern: '^charts/' }],
+    ['is-file-changed', { pattern: '^charts/', 'base-ref': 'chart-v1.2.3', 'head-ref': 'main' }],
     ['bump-version', { token: '${{ secrets.GITHUB_TOKEN }}' }],
     [
       'checkout-dependencies',
@@ -62,12 +62,33 @@ void test('accepts valid inputs for each documented consumer action', async () =
     ],
     ['helm-package-push', {}],
     [
+      'helm-deployment-state',
+      {
+        token: '${{ secrets.GITHUB_TOKEN }}',
+        environment: 'production',
+        'chart-name': 'api',
+      },
+    ],
+    [
+      'argocd-verify-deployment',
+      {
+        server: 'argocd.example.com',
+        application: 'api-production',
+        'auth-token': '${{ secrets.ARGOCD_AUTH_TOKEN }}',
+        'cloudflare-access-client-id': '${{ secrets.CF_ACCESS_CLIENT_ID }}',
+        'cloudflare-access-client-secret': '${{ secrets.CF_ACCESS_CLIENT_SECRET }}',
+        'expected-commit-sha': '${{ needs.promote.outputs.commit-sha }}',
+        'gitops-repository': 'SayakMukhopadhyay/k8s-landscape-charts',
+        'gitops-token': '${{ secrets.GITOPS_READ_TOKEN }}',
+      },
+    ],
+    [
       'chart-update-deploy',
       {
         token: '${{ secrets.GITHUB_TOKEN }}',
         environment: 'production',
         'chart-name': 'api',
-        'chart-version': '1.2.3',
+        'image-tag': 'build-abcdef1234567890',
       },
     ],
     [
@@ -138,6 +159,30 @@ void test('rejects an unknown action input', async () => {
 
 void test('rejects a missing caller-required action input', async () => {
   assert.equal(await validateWorkflow(workflowFor('SayakMukhopadhyay/github-actions/is-file-changed@v1')), false);
+});
+
+void test('rejects missing required Helm deployment state inputs', async () => {
+  assert.equal(
+    await validateWorkflow(
+      workflowFor('SayakMukhopadhyay/github-actions/helm-deployment-state@v1', {
+        token: '${{ secrets.GITHUB_TOKEN }}',
+        environment: 'production',
+      }),
+    ),
+    false,
+  );
+});
+
+void test('rejects missing required Argo CD deployment verification inputs', async () => {
+  assert.equal(
+    await validateWorkflow(
+      workflowFor('SayakMukhopadhyay/github-actions/argocd-verify-deployment@v1', {
+        server: 'argocd.example.com',
+        application: 'api-production',
+      }),
+    ),
+    false,
+  );
 });
 
 void test('permits metadata inputs that are required but have a default', async () => {

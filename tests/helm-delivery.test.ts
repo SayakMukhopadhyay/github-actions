@@ -57,7 +57,7 @@ void test('helm-package-push prepares stable and development chart metadata', ()
     commitSha,
     runnerTemp: development.runnerTemp,
   });
-  assert.equal(developmentResult.chartVersion, `0.4.0-${commitSha.toLowerCase()}`);
+  assert.equal(developmentResult.chartVersion, `0.0.0-build-${commitSha.toLowerCase()}`);
 });
 
 void test('helm-package-push records only HTTP dependency repositories without executing commands', () => {

@@ -1,0 +1,28 @@
+name: Read Helm Deployment State
+description: Internal implementation for the public helm-deployment-state composite action
+inputs:
+  checkout-path:
+    description: Path containing the checked-out target repository
+    required: true
+  environment:
+    description: Environment whose wrapper chart state is being read
+    required: true
+  chart-name:
+    description: Name of the chart whose deployment state is being read
+    required: true
+  dependency:
+    description: Dependency name or alias to read; an empty value defaults to chart-name
+    required: true
+  wrapper-chart-path:
+    description: Wrapper chart path; an empty value defaults to chart-name/envs/environment
+    required: true
+outputs:
+  dependency-version:
+    description: Version of the selected Helm dependency
+  image-tag:
+    description: Image tag under the selected dependency values root
+  chart-source-ref:
+    description: Full development commit SHA or stable chart-v<version> source ref
+runs:
+  using: node24
+  main: dist/index.mjs

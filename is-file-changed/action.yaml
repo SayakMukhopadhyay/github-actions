@@ -4,6 +4,12 @@ inputs:
   pattern:
     description: JavaScript regular expression matched against changed repository paths
     required: true
+  base-ref:
+    description: Optional explicit base commit object ID or Git ref; must be provided with head-ref
+    required: false
+  head-ref:
+    description: Optional explicit head commit object ID or Git ref; must be provided with base-ref
+    required: false
   token:
     description: Token used to checkout and fetch the repository
     required: false
@@ -22,11 +28,13 @@ runs:
         EVENT_NAME: ${{ github.event_name }}
         BASE_SHA: ${{ github.event.before }}
         HEAD_SHA: ${{ github.event.after }}
+        BASE_REF: ${{ inputs.base-ref }}
+        HEAD_REF: ${{ inputs.head-ref }}
       run: 'bash "$ACTION_PATH/collect-changed-files.sh" validate'
     - name: Checkout repository history
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        ref: ${{ github.event.after }}
+        ref: ${{ inputs.head-ref || github.event.after }}
         fetch-depth: 0
         fetch-tags: false
         # Credentials are retained only so an orphaned force-push endpoint can be fetched.
@@ -40,6 +48,8 @@ runs:
         EVENT_NAME: ${{ github.event_name }}
         BASE_SHA: ${{ github.event.before }}
         HEAD_SHA: ${{ github.event.after }}
+        BASE_REF: ${{ inputs.base-ref }}
+        HEAD_REF: ${{ inputs.head-ref }}
       run: 'bash "$ACTION_PATH/collect-changed-files.sh" collect'
     - id: match
       name: Detect changed paths

@@ -2,7 +2,7 @@ name: Helm Package Push
 description: Package a Helm chart and optionally push it to a caller-selected OCI registry
 inputs:
   development:
-    description: Whether to create a development chart version
+    description: Whether to create version 0.0.0-build-<full lowercase commit SHA>
     required: false
     default: 'false'
   username:

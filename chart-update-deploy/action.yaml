@@ -1,5 +1,5 @@
 name: Chart Update Deploy
-description: Update a Helm dependency in the personal GitOps repository or a caller-selected override
+description: Update Helm dependency and image state in the personal GitOps repository or a caller-selected override
 inputs:
   token:
     description: Token with contents write permission for the target repository
@@ -11,10 +11,15 @@ inputs:
     description: Name of the chart being deployed
     required: true
   chart-version:
-    description: Version of the chart dependency to deploy
-    required: true
+    description: Optional version of the chart dependency to deploy; image-tag is required when omitted
+    required: false
+    default: ''
+  image-tag:
+    description: Optional image tag to set under the selected dependency values root; chart-version is required when omitted
+    required: false
+    default: ''
   dependency:
-    description: Name of the dependency to update; defaults to chart-name
+    description: Name or alias of the dependency to update; defaults to chart-name
     required: false
     default: ''
   username:
@@ -41,6 +46,10 @@ inputs:
     description: Optional OCI registry host to authenticate to before dependency update
     required: false
     default: ''
+outputs:
+  commit-sha:
+    description: Resulting target GitOps commit SHA, or the current target HEAD for a no-op
+    value: ${{ steps.update.outputs.commit-sha }}
 runs:
   using: composite
   steps:
@@ -67,7 +76,8 @@ runs:
         USERNAME: ${{ inputs.username }}
         PASSWORD: ${{ inputs.password }}
       run: 'printf "%s" "$PASSWORD" | helm registry login "$REGISTRY" --username "$USERNAME" --password-stdin'
-    - name: Update and push wrapper dependency
+    - id: update
+      name: Update and push wrapper state
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -75,6 +85,7 @@ runs:
         INPUT_ENVIRONMENT: ${{ inputs.environment }}
         INPUT_CHART_NAME: ${{ inputs.chart-name }}
         INPUT_CHART_VERSION: ${{ inputs.chart-version }}
+        INPUT_IMAGE_TAG: ${{ inputs.image-tag }}
         INPUT_DEPENDENCY: ${{ inputs.dependency }}
         INPUT_TARGET_REF: ${{ inputs.target-ref }}
         INPUT_WRAPPER_CHART_PATH: ${{ inputs.wrapper-chart-path }}

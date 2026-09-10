@@ -16,6 +16,77 @@
               "allOf": [
                 {
                   "if": {
+                    "properties": {
+                      "uses": { "const": "SayakMukhopadhyay/github-actions/argocd-verify-deployment@v1" }
+                    },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "server": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Argo CD server hostname"
+                          },
+                          "application": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Name of the Argo CD Application to verify"
+                          },
+                          "auth-token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Argo CD authentication token with read access to the Application"
+                          },
+                          "cloudflare-access-client-id": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Cloudflare Access service-token client ID"
+                          },
+                          "cloudflare-access-client-secret": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Cloudflare Access service-token client secret"
+                          },
+                          "expected-commit-sha": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Full GitOps commit SHA expected to be synchronized or an ancestor of it"
+                          },
+                          "gitops-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "GitHub owner/repository containing the GitOps commit history"
+                          },
+                          "gitops-token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Token with contents read permission for the GitOps repository"
+                          },
+                          "timeout-seconds": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Maximum seconds to wait for Argo CD and for an optional smoke request",
+                            "default": "300"
+                          },
+                          "smoke-url": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional HTTP URL to smoke-test through Cloudflare Access",
+                            "default": ""
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "server",
+                          "application",
+                          "auth-token",
+                          "cloudflare-access-client-id",
+                          "cloudflare-access-client-secret",
+                          "expected-commit-sha",
+                          "gitops-repository",
+                          "gitops-token"
+                        ]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
                     "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/azure-acr-token@v1" } },
                     "required": ["uses"]
                   },
@@ -114,11 +185,17 @@
                           },
                           "chart-version": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Version of the chart dependency to deploy"
+                            "description": "Optional version of the chart dependency to deploy; image-tag is required when omitted",
+                            "default": ""
+                          },
+                          "image-tag": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional image tag to set under the selected dependency values root; chart-version is required when omitted",
+                            "default": ""
                           },
                           "dependency": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Name of the dependency to update; defaults to chart-name",
+                            "description": "Name or alias of the dependency to update; defaults to chart-name",
                             "default": ""
                           },
                           "username": {
@@ -153,7 +230,7 @@
                           }
                         },
                         "additionalProperties": false,
-                        "required": ["token", "environment", "chart-name", "chart-version"]
+                        "required": ["token", "environment", "chart-name"]
                       }
                     },
                     "required": ["with"]
@@ -471,6 +548,56 @@
                 },
                 {
                   "if": {
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/helm-deployment-state@v1" } },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Token with contents read permission for the target repository"
+                          },
+                          "environment": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Environment whose wrapper chart state is being read"
+                          },
+                          "chart-name": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Name of the chart whose deployment state is being read"
+                          },
+                          "dependency": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Dependency name or alias to read; defaults to chart-name",
+                            "default": ""
+                          },
+                          "target-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "GitHub owner/repository containing the wrapper chart",
+                            "default": "SayakMukhopadhyay/k8s-landscape-charts"
+                          },
+                          "target-ref": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Git ref to read in the target repository",
+                            "default": "main"
+                          },
+                          "wrapper-chart-path": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Wrapper chart path; defaults to chart-name/envs/environment",
+                            "default": ""
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["token", "environment", "chart-name"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
                     "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/helm-package-push@v1" } },
                     "required": ["uses"]
                   },
@@ -481,7 +608,7 @@
                         "properties": {
                           "development": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Whether to create a development chart version",
+                            "description": "Whether to create version 0.0.0-build-<full lowercase commit SHA>",
                             "default": "false"
                           },
                           "username": {
@@ -538,6 +665,14 @@
                           "pattern": {
                             "type": ["string", "number", "boolean"],
                             "description": "JavaScript regular expression matched against changed repository paths"
+                          },
+                          "base-ref": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional explicit base commit object ID or Git ref; must be provided with head-ref"
+                          },
+                          "head-ref": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional explicit head commit object ID or Git ref; must be provided with base-ref"
                           },
                           "token": {
                             "type": ["string", "number", "boolean"],

@@ -22946,15 +22946,14 @@ function readYamlScalar(file, field, authorityRoot = dirname(file)) {
 }
 function checkVersion(options) {
 	const { project } = resolveProject(options.workspace, options.workingDirectory);
-	const applicationVersion = readCanonicalVersion(resolve(project, "VERSION"), "application version", project);
+	readCanonicalVersion(resolve(project, "VERSION"), "application version", project);
 	if (options.helm) {
 		const chartVersionFile = resolve(project, "charts", "VERSION");
 		const chartFile = resolve(project, "charts", "Chart.yaml");
 		const chartVersion = readCanonicalVersion(chartVersionFile, "chart version", project);
 		const actualChartVersion = readYamlScalar(chartFile, "version", project);
-		const actualApplicationVersion = readYamlScalar(chartFile, "appVersion", project);
+		readYamlScalar(chartFile, "appVersion", project);
 		if (actualChartVersion !== chartVersion) fail(`${chartFile} field version mismatch: expected '${chartVersion}', got '${actualChartVersion}'`);
-		if (actualApplicationVersion !== applicationVersion) fail(`${chartFile} field appVersion mismatch: expected '${applicationVersion}', got '${actualApplicationVersion}'`);
 	}
 }
 function run() {

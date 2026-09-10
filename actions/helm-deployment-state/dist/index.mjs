@@ -9,8 +9,8 @@ import * as events from "events";
 import { pathToFileURL } from "node:url";
 import "child_process";
 import "timers";
-import { lstatSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
 var __require = /* #__PURE__ */ (() => createRequire(import.meta.url))();
 //#endregion
@@ -16259,13 +16259,6 @@ function setFailed(message) {
 function error(message, properties = {}) {
 	issueCommand("error", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
-/**
-* Writes info to log with console.log.
-* @param message info message
-*/
-function info(message) {
-	process.stdout.write(message + os$1.EOL);
-}
 //#endregion
 //#region node_modules/yaml/dist/nodes/identity.js
 var require_identity = /* @__PURE__ */ __commonJSMin(((exports) => {
@@ -22871,7 +22864,7 @@ var require_public_api = /* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.stringify = stringify;
 }));
 //#endregion
-//#region check-version/check-version.ts
+//#region actions/helm-deployment-state/helm-deployment-state.ts
 var import_dist = (/* @__PURE__ */ __commonJSMin(((exports) => {
 	var composer = require_composer();
 	var Document = require_Document();
@@ -22918,193 +22911,109 @@ var import_dist = (/* @__PURE__ */ __commonJSMin(((exports) => {
 	exports.visit = visit.visit;
 	exports.visitAsync = visit.visitAsync;
 })))();
-const CANONICAL_VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
-function fail$1(message) {
-	throw new Error(message);
-}
-function isContained(root, candidate) {
-	const relativeCandidate = relative(root, candidate);
-	return relativeCandidate !== ".." && !relativeCandidate.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) && !isAbsolute(relativeCandidate);
-}
-function requireRegularContainedFile(authorityRoot, file, label) {
-	const root = realpathSync(authorityRoot);
-	let metadata;
-	try {
-		metadata = lstatSync(file);
-	} catch {
-		fail$1(`${label} file does not exist: ${file}`);
-	}
-	if (metadata.isSymbolicLink() || !metadata.isFile()) fail$1(`${label} must be a regular non-symlink file: ${file}`);
-	const resolvedFile = realpathSync(file);
-	if (!isContained(root, resolvedFile)) fail$1(`${label} file escapes the checkout: ${file}`);
-	return resolvedFile;
-}
-function resolveProject(workspaceInput, workingDirectory) {
-	const workspace = realpathSync(workspaceInput);
-	const requestedProject = resolve(workspace, workingDirectory);
-	let project;
-	try {
-		project = realpathSync(requestedProject);
-	} catch {
-		fail$1("working-directory does not exist");
-	}
-	if (!isContained(workspace, project)) fail$1("working-directory escapes the checkout");
-	return {
-		workspace,
-		project
-	};
-}
-function readCanonicalVersion(file, label, authorityRoot = dirname(file)) {
-	const authorityFile = requireRegularContainedFile(authorityRoot, file, label);
-	const contents = readFileSync(authorityFile, "utf8");
-	const match = /^([^\r\n]*)(?:\n)?$/.exec(contents);
-	if (match === null || contents.endsWith("\n\n")) fail$1(`${label} file must contain exactly one line: ${file}`);
-	const version = match[1];
-	if (!CANONICAL_VERSION.test(version)) fail$1(`${label} in ${file} must be canonical MAJOR.MINOR.PATCH; got '${version}'`);
-	return version;
-}
-function readYamlScalar(file, field, authorityRoot = dirname(file)) {
-	const authorityFile = requireRegularContainedFile(authorityRoot, file, "chart metadata");
-	const document = (0, import_dist.parseDocument)(readFileSync(authorityFile, "utf8"), { uniqueKeys: true });
-	if (document.errors.length > 0) fail$1(`could not read ${file} field ${field}: ${document.errors[0].message}`);
-	const value = document.get(field);
-	if (typeof value !== "string" && typeof value !== "number") fail$1(`could not read ${file} field ${field}`);
-	return String(value);
-}
-function checkVersion(options) {
-	const { project } = resolveProject(options.workspace, options.workingDirectory);
-	readCanonicalVersion(resolve(project, "VERSION"), "application version", project);
-	if (options.helm) {
-		const chartVersionFile = resolve(project, "charts", "VERSION");
-		const chartFile = resolve(project, "charts", "Chart.yaml");
-		const chartVersion = readCanonicalVersion(chartVersionFile, "chart version", project);
-		const actualChartVersion = readYamlScalar(chartFile, "version", project);
-		readYamlScalar(chartFile, "appVersion", project);
-		if (actualChartVersion !== chartVersion) fail$1(`${chartFile} field version mismatch: expected '${chartVersion}', got '${actualChartVersion}'`);
-	}
-}
-function run$1() {
-	try {
-		checkVersion({
-			workspace: process.env.GITHUB_WORKSPACE ?? process.cwd(),
-			workingDirectory: getInput("working-directory") || ".",
-			helm: getInput("helm") === "true"
-		});
-		info("Version metadata is consistent");
-	} catch (error) {
-		setFailed(error instanceof Error ? error.message : "Unknown error occurred");
-	}
-}
-if (process.argv[1] !== void 0 && import.meta.url === pathToFileURL(process.argv[1]).href) run$1();
-//#endregion
-//#region actions/bump-version/bump-version.ts
+const CANONICAL_VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u;
+const DEVELOPMENT_VERSION = /^0\.0\.0-build-([0-9a-f]{40})$/u;
 function fail(message) {
 	throw new Error(message);
 }
-function incrementVersion(version, increment) {
-	if (increment !== "patch" && increment !== "minor" && increment !== "major") fail("increment must be patch, minor, or major");
-	const [majorText, minorText, patchText] = version.split(".");
-	const major = BigInt(majorText);
-	const minor = BigInt(minorText);
-	const patch = BigInt(patchText);
-	if (increment === "major") return `${major + 1n}.0.0`;
-	if (increment === "minor") return `${major}.${minor + 1n}.0`;
-	return `${major}.${minor}.${patch + 1n}`;
+function ensureContained(parent, child, label) {
+	const relativeChild = relative(parent, child);
+	if (relativeChild === ".." || relativeChild.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || isAbsolute(relativeChild)) fail(`${label} escapes the checkout`);
 }
-function readChart(file, authorityRoot) {
-	const authorityFile = requireRegularContainedFile(authorityRoot, file, "chart metadata");
-	const source = readFileSync(authorityFile, "utf8");
-	const document = (0, import_dist.parseDocument)(source, {
-		keepSourceTokens: true,
-		uniqueKeys: true
-	});
+function requiredInput(value, label) {
+	if (value.trim().length === 0 || value.includes("\0") || value.includes("\n") || value.includes("\r")) fail(`${label} must be a non-empty single-line value`);
+	return value;
+}
+function readAuthorityFile(file) {
+	if (!existsSync(file)) fail(`authority file does not exist: ${file}`);
+	const status = lstatSync(file);
+	if (status.isSymbolicLink()) fail(`authority file must not be a symbolic link: ${file}`);
+	if (!status.isFile()) fail(`authority path must be a regular file: ${file}`);
+	return readFileSync(file, "utf8");
+}
+function parseMapping(file) {
+	const document = (0, import_dist.parseDocument)(readAuthorityFile(file), { uniqueKeys: true });
 	if (document.errors.length > 0 || !(0, import_dist.isMap)(document.contents)) fail(`${file} must contain a valid YAML mapping`);
-	return {
-		source,
-		document
-	};
+	return document;
 }
-function chartScalar(document, file, field) {
-	const node = document.get(field, true);
-	if (!(0, import_dist.isScalar)(node) || typeof node.value !== "string" && typeof node.value !== "number") fail(`${file} must contain exactly one top-level ${field} field`);
-	return String(node.value);
+function scalarValue(node, label) {
+	if (!(0, import_dist.isScalar)(node)) fail(`${label} must be a non-empty single-line scalar`);
+	const rawValue = node.value;
+	if (typeof rawValue !== "string" && typeof rawValue !== "number" && typeof rawValue !== "boolean" && typeof rawValue !== "bigint") fail(`${label} must be a non-empty single-line scalar`);
+	const value = String(rawValue);
+	if (value.trim().length === 0 || value.includes("\0") || value.includes("\n") || value.includes("\r")) fail(`${label} must be a non-empty single-line scalar`);
+	return value;
 }
-function patchChartScalars(file, authorityRoot, replacements) {
-	const authorityFile = requireRegularContainedFile(authorityRoot, file, "chart metadata");
-	const { source, document } = readChart(authorityFile, authorityRoot);
-	const patches = [];
-	for (const [field, value] of replacements) {
-		const node = document.get(field, true);
-		if (!(0, import_dist.isScalar)(node) || node.range == null) fail(`${file} must contain exactly one top-level ${field} field`);
-		const [start, end] = node.range;
-		const original = source.slice(start, end);
-		const quote = original.startsWith("\"") && original.endsWith("\"") ? "\"" : original.startsWith("'") && original.endsWith("'") ? "'" : "";
-		patches.push({
-			start,
-			end,
-			replacement: `${quote}${value}${quote}`
+function optionalStringScalar(node, label) {
+	if (node === void 0 || node === null) return;
+	if (!(0, import_dist.isScalar)(node) || typeof node.value !== "string") fail(`${label} must be a non-empty single-line string scalar`);
+	return scalarValue(node, label);
+}
+function sourceRef(version) {
+	const development = DEVELOPMENT_VERSION.exec(version);
+	if (development !== null) return development[1] ?? fail("development chart version did not contain a commit SHA");
+	if (CANONICAL_VERSION.test(version)) return `chart-v${version}`;
+	return fail(`dependency version '${version}' is not a supported development or stable chart version`);
+}
+function readHelmDeploymentState(options) {
+	const chartName = requiredInput(options.chartName, "chart-name");
+	const environment = requiredInput(options.environment, "environment");
+	const requestedDependency = requiredInput(options.dependency || chartName, "dependency");
+	const requestedWrapper = options.wrapperChartPath || join(chartName, "envs", environment);
+	const checkout = realpathSync(options.checkoutPath);
+	const lexicalWrapper = resolve(checkout, requestedWrapper);
+	ensureContained(checkout, lexicalWrapper, "wrapper-chart-path");
+	if (!existsSync(lexicalWrapper)) fail(`wrapper chart path does not exist: ${lexicalWrapper}`);
+	const wrapper = realpathSync(lexicalWrapper);
+	ensureContained(checkout, wrapper, "wrapper-chart-path");
+	const chartFile = join(wrapper, "Chart.yaml");
+	const valuesFile = join(wrapper, "values.yaml");
+	const chart = parseMapping(chartFile);
+	const values = parseMapping(valuesFile);
+	const dependencies = chart.get("dependencies", true);
+	if (!(0, import_dist.isSeq)(dependencies)) fail(`${chartFile} field dependencies must be a sequence`);
+	const matches = [];
+	for (const dependency of dependencies.items) {
+		if (!(0, import_dist.isMap)(dependency)) fail(`${chartFile} dependencies must be mappings`);
+		const name = optionalStringScalar(dependency.get("name", true), `${chartFile} dependency name`);
+		if (name === void 0) fail(`${chartFile} dependencies must have a name`);
+		const alias = optionalStringScalar(dependency.get("alias", true), `${chartFile} dependency alias`);
+		if (requestedDependency === name || requestedDependency === alias) matches.push({
+			versionNode: dependency.get("version", true),
+			valuesRoot: alias ?? name
 		});
 	}
-	let updated = source;
-	for (const patch of patches.sort((left, right) => right.start - left.start)) updated = `${updated.slice(0, patch.start)}${patch.replacement}${updated.slice(patch.end)}`;
-	const verified = (0, import_dist.parseDocument)(updated, { uniqueKeys: true });
-	if (verified.errors.length > 0) fail(`could not update ${file}`);
-	for (const [field, value] of replacements) if (chartScalar(verified, file, field) !== value) fail(`could not update ${file} field ${field}`);
-	writeFileSync(authorityFile, updated, "utf8");
-}
-function mutateVersions(options) {
-	if (!options.helm && !options.go) return {
-		applicationVersion: "",
-		chartVersion: ""
-	};
-	const { project } = resolveProject(options.workspace, options.workingDirectory);
-	const applicationFile = requireRegularContainedFile(project, resolve(project, "VERSION"), "application version");
-	const applicationVersion = readCanonicalVersion(applicationFile, "application version", project);
-	let chartVersion = "";
-	let chartFile = "";
-	let chartVersionFile = "";
-	if (options.helm) {
-		chartVersionFile = requireRegularContainedFile(project, resolve(project, "charts", "VERSION"), "chart version");
-		chartFile = requireRegularContainedFile(project, resolve(project, "charts", "Chart.yaml"), "chart metadata");
-		chartVersion = readCanonicalVersion(chartVersionFile, "chart version", project);
-		const { document } = readChart(chartFile, project);
-		const actualChartVersion = chartScalar(document, chartFile, "version");
-		chartScalar(document, chartFile, "appVersion");
-		if (actualChartVersion !== chartVersion) fail(`${chartFile} field version does not match ${chartVersionFile}`);
-	}
-	const newApplicationVersion = options.go ? incrementVersion(applicationVersion, options.increment) : "";
-	const newChartVersion = options.helm ? incrementVersion(chartVersion, options.increment) : "";
-	if (options.go) writeFileSync(applicationFile, `${newApplicationVersion}\n`, "utf8");
-	if (options.helm) {
-		writeFileSync(chartVersionFile, `${newChartVersion}\n`, "utf8");
-		const replacements = /* @__PURE__ */ new Map([["version", newChartVersion], ["appVersion", options.go ? newApplicationVersion : applicationVersion]]);
-		patchChartScalars(chartFile, project, replacements);
-	}
+	if (matches.length !== 1) fail(`${chartFile} must contain exactly one dependency matching '${requestedDependency}'; found ${String(matches.length)}`);
+	const match = matches[0] ?? fail("selected dependency was unavailable");
+	const dependencyVersion = scalarValue(match.versionNode, `${chartFile} dependency version`);
+	const rootNode = values.get(match.valuesRoot, true);
+	if (!(0, import_dist.isMap)(rootNode)) fail(`${valuesFile} field ${match.valuesRoot} must be a mapping`);
+	const imageNode = rootNode.get("image", true);
+	if (!(0, import_dist.isMap)(imageNode)) fail(`${valuesFile} field ${match.valuesRoot}.image must be a mapping`);
 	return {
-		applicationVersion: newApplicationVersion,
-		chartVersion: newChartVersion
+		dependencyVersion,
+		imageTag: scalarValue(imageNode.get("tag", true), `${valuesFile} field ${match.valuesRoot}.image.tag`),
+		chartSourceRef: sourceRef(dependencyVersion)
 	};
 }
 function run() {
 	try {
-		const helm = getInput("helm") === "true";
-		const go = getInput("go") === "true";
-		const result = mutateVersions({
-			workspace: process.env.GITHUB_WORKSPACE ?? process.cwd(),
-			workingDirectory: getInput("working-directory") || ".",
-			increment: getInput("increment") || "patch",
-			helm,
-			go
+		const state = readHelmDeploymentState({
+			checkoutPath: getInput("checkout-path"),
+			environment: getInput("environment"),
+			chartName: getInput("chart-name"),
+			dependency: getInput("dependency"),
+			wrapperChartPath: getInput("wrapper-chart-path")
 		});
-		if (!helm && !go) info("No version target was selected; nothing to do");
-		setOutput("application-version", result.applicationVersion);
-		setOutput("chart-version", result.chartVersion);
+		setOutput("dependency-version", state.dependencyVersion);
+		setOutput("image-tag", state.imageTag);
+		setOutput("chart-source-ref", state.chartSourceRef);
 	} catch (error) {
 		setFailed(error instanceof Error ? error.message : "Unknown error occurred");
 	}
 }
 if (process.argv[1] !== void 0 && import.meta.url === pathToFileURL(process.argv[1]).href) run();
 //#endregion
-export { incrementVersion, mutateVersions, run };
+export { readHelmDeploymentState, run };
 
 //# sourceMappingURL=index.mjs.map

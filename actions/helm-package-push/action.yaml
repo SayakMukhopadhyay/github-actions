@@ -2,7 +2,7 @@ name: Prepare Helm Package
 description: Internal metadata preparation for the public helm-package-push composite action
 inputs:
   development:
-    description: Whether to create a development chart version
+    description: Whether to create version 0.0.0-build-<full lowercase commit SHA>
     required: true
   working-directory:
     description: Working directory of the project
@@ -16,7 +16,7 @@ outputs:
   chart-name:
     description: Name declared by Chart.yaml
   chart-version:
-    description: Package version derived from charts/VERSION
+    description: Stable charts/VERSION or 0.0.0-build-<full lowercase commit SHA>
   repositories-file:
     description: NUL-delimited HTTP dependency repository records for the Helm transaction
 runs:

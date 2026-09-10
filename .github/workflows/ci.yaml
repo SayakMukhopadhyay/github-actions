@@ -87,6 +87,8 @@ jobs:
           actions/is-file-changed/dist
           actions/bump-version/dist
           actions/helm-package-push/dist
+          actions/helm-deployment-state/dist
+          actions/argocd-verify-deployment/dist
           actions/create-release/dist
 
       - name: Smoke-check ESM action bundles
@@ -97,6 +99,8 @@ jobs:
           node --check actions/is-file-changed/dist/index.mjs
           node --check actions/bump-version/dist/index.mjs
           node --check actions/helm-package-push/dist/index.mjs
+          node --check actions/helm-deployment-state/dist/index.mjs
+          node --check actions/argocd-verify-deployment/dist/index.mjs
           node --check actions/create-release/dist/index.mjs
 
       - name: Lint shell scripts
