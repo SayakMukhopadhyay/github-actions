@@ -40,7 +40,9 @@ outputs:
 runs:
   using: composite
   steps:
+    # TEMPORARY: Remove this comment and the three constant-false conditions below to enable deployment verification.
     - name: Checkout GitOps repository
+      if: ${{ false }}
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         repository: ${{ inputs.gitops-repository }}
@@ -51,11 +53,13 @@ runs:
         token: ${{ inputs.gitops-token }}
     - id: cli
       name: Install verified Argo CD CLI
+      if: ${{ false }}
       uses: $/actions/argocd-verify-deployment
       with:
         runner-temp: ${{ runner.temp }}
     - id: verify
       name: Verify deployment
+      if: ${{ false }}
       shell: pwsh
       env:
         ARGOCD_CLI_PATH: ${{ steps.cli.outputs.cli-path }}

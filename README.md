@@ -275,6 +275,9 @@ The action stages only the expected wrapper files and uses normal non-force push
 
 ## `argocd-verify-deployment`
 
+> [!WARNING]
+> **Temporary bypass:** All operational steps are currently disabled, so the action succeeds without performing verification and does not emit `synchronized-revision`.
+
 `SayakMukhopadhyay/github-actions/argocd-verify-deployment@v1` waits for one Argo CD Application to become `Synced` and `Healthy`, then verifies that the expected GitOps commit is the reported synchronized revision or its Git ancestor. It uses Argo CD through gRPC-web and sends the supplied Cloudflare Access service-token headers on every Argo request.
 
 ```yaml

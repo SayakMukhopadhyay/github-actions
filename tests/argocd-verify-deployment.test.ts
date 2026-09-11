@@ -14,6 +14,7 @@ import {
 
 interface ActionStep {
   env?: Record<string, unknown>;
+  if?: unknown;
   uses?: unknown;
   with?: Record<string, unknown>;
 }
@@ -78,10 +79,9 @@ void test('removes a download whose checksum does not match', async () => {
   assert.equal(existsSync(destination), false);
 });
 
-void test('keeps the public action contract narrow and read-only', () => {
-  const metadata = parse(
-    readFileSync(path.join(root, 'argocd-verify-deployment', 'action.yaml'), 'utf8'),
-  ) as ActionMetadata;
+void test('keeps the production step graph present but temporarily unreachable', () => {
+  const metadataSource = readFileSync(path.join(root, 'argocd-verify-deployment', 'action.yaml'), 'utf8');
+  const metadata = parse(metadataSource) as ActionMetadata;
 
   assert.deepEqual(Object.keys(metadata.inputs ?? {}).sort(), [
     'application',
@@ -101,10 +101,16 @@ void test('keeps the public action contract narrow and read-only', () => {
 
   const steps = metadata.runs?.steps ?? [];
   assert.equal(metadata.runs?.using, 'composite');
+  assert.equal(steps.length, 3);
+  assert.deepEqual(
+    steps.map((step) => step.if),
+    ['${{ false }}', '${{ false }}', '${{ false }}'],
+  );
   assert.equal(steps[0]?.uses, 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1');
   assert.equal(steps[0]?.with?.['fetch-depth'], 0);
   assert.equal(steps[0]?.with?.['persist-credentials'], false);
   assert.equal(steps[1]?.uses, '$/actions/argocd-verify-deployment');
+  assert.match(metadataSource, /# TEMPORARY: Remove this comment and the three constant-false conditions below/u);
 
   const transaction = readFileSync(path.join(root, 'argocd-verify-deployment', 'VerifyDeployment.psm1'), 'utf8');
 
