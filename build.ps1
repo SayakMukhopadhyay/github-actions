@@ -300,22 +300,27 @@ function Assert-NoBash {
     }
 
     $searchArguments = @(
+        '-C'
+        $root
+        'grep'
         '-n'
-        '--glob'
-        '!package-lock.json'
-        '--glob'
-        '!build.ps1'
-        '--glob'
-        '!tests/PowerShellPolicy.Tests.ps1'
-        '(shell:\s*bash|#!/usr/bin/env bash|\bbash\s+["'']\S)'
+        '--untracked'
+        '--exclude-standard'
+        '--extended-regexp'
+        '(shell:[[:space:]]*bash|#!/usr/bin/env bash|(^|[^[:alnum:]_])bash[[:space:]]+["''][^[:space:]])'
+        '--'
         '.'
+        ':(exclude)package-lock.json'
+        ':(exclude)build.ps1'
+        ':(exclude)tests/PowerShellPolicy.Tests.ps1'
     )
-    $references = @(rg @searchArguments)
-    if ($LASTEXITCODE -eq 0) {
+    $references = @(& git @searchArguments)
+    $searchExitCode = $LASTEXITCODE
+    if ($searchExitCode -eq 0) {
         throw "Bash invocation/reference policy failed:`n$($references -join "`n")"
     }
-    if ($LASTEXITCODE -ne 1) {
-        throw 'rg policy scan failed'
+    if ($searchExitCode -ne 1) {
+        throw 'git grep policy scan failed'
     }
 }
 

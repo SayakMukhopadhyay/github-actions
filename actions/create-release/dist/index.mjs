@@ -1,5 +1,5 @@
 import { lstat, readFile, realpath, writeFile } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 //#region \0rolldown/runtime.js
 var __create = Object.create;
@@ -2905,17 +2905,17 @@ function getName(value, options) {
 	if (typeof value !== "object" || value === null) return;
 	const name = "name" in value ? value.name : void 0;
 	const explicitName = name && String(name) || "filename" in value && value.filename && String(value.filename);
-	if (explicitName) return options?.stripFilename === false ? normalizeFilenamePath(explicitName) : basename(explicitName);
+	if (explicitName) return options?.stripFilename === false ? normalizeFilenamePath(explicitName) : basename$1(explicitName);
 	const url = "url" in value && value.url && String(value.url);
 	if (url) try {
-		return basename(new URL(url).pathname);
+		return basename$1(new URL(url).pathname);
 	} catch {
-		return basename(url);
+		return basename$1(url);
 	}
 	const path = "path" in value && value.path && String(value.path);
-	return path ? basename(path) : void 0;
+	return path ? basename$1(path) : void 0;
 }
-function basename(value) {
+function basename$1(value) {
 	return value.split(/[\\/]/).pop() || void 0;
 }
 function normalizeFilenamePath(value) {
@@ -3075,7 +3075,7 @@ function getStreamingFileName(value, options) {
 	if (isStreamingFile(value)) {
 		const { name } = value;
 		if (typeof name !== "string" || !name) throw new TypeError("Streaming upload file name must be a non-empty string");
-		return options.stripFilenames === false ? normalizeFilenamePath(name) : basename(name) ?? "unknown_file";
+		return options.stripFilenames === false ? normalizeFilenamePath(name) : basename$1(name) ?? "unknown_file";
 	}
 	return getName(value, { stripFilename: options.stripFilenames }) ?? "unknown_file";
 }
@@ -15520,9 +15520,11 @@ async function run(clientFactory) {
 		let bodyPath;
 		try {
 			const canonicalRunnerTemp = await realpath(runnerTemp);
-			bodyPath = resolve(bodyInput);
+			const requestedBodyPath = resolve(bodyInput);
+			const canonicalBodyDirectory = await realpath(dirname(requestedBodyPath));
+			bodyPath = resolve(canonicalBodyDirectory, basename(requestedBodyPath));
 			const bodyFromRunnerTemp = relative(canonicalRunnerTemp, bodyPath);
-			if (bodyFromRunnerTemp === "" || bodyFromRunnerTemp.startsWith("..") || dirname(bodyPath) !== dirname(factsPath)) fail({
+			if (bodyFromRunnerTemp === "" || bodyFromRunnerTemp.startsWith("..") || canonicalBodyDirectory !== dirname(factsPath)) fail({
 				category: "input-file-validation",
 				reason: "body-file"
 			});

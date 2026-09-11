@@ -1,5 +1,5 @@
 import { writeFile, realpath } from 'node:fs/promises';
-import { dirname, relative, resolve } from 'node:path';
+import { basename, dirname, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   fail,
@@ -63,12 +63,14 @@ export async function run(clientFactory?: ClientFactory): Promise<void> {
 
     try {
       const canonicalRunnerTemp = await realpath(runnerTemp);
-      bodyPath = resolve(bodyInput);
+      const requestedBodyPath = resolve(bodyInput);
+      const canonicalBodyDirectory = await realpath(dirname(requestedBodyPath));
+      bodyPath = resolve(canonicalBodyDirectory, basename(requestedBodyPath));
       const bodyFromRunnerTemp = relative(canonicalRunnerTemp, bodyPath);
       if (
         bodyFromRunnerTemp === '' ||
         bodyFromRunnerTemp.startsWith('..') ||
-        dirname(bodyPath) !== dirname(factsPath)
+        canonicalBodyDirectory !== dirname(factsPath)
       ) {
         fail({ category: 'input-file-validation', reason: 'body-file' });
       }

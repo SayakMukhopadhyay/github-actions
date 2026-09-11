@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -51,6 +51,7 @@ const releaseInputNames = ['openai-api-key', 'context-file', 'facts-file', 'body
 type ReleaseInputName = (typeof releaseInputNames)[number];
 
 interface RunOptions {
+  aliasRunnerTemp?: boolean;
   bodyInput?: string;
   contextInput?: string;
   factsContent?: string;
@@ -75,7 +76,14 @@ function inputEnvironmentName(name: ReleaseInputName): string {
 }
 
 async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
-  const runnerTemp = await mkdtemp(join(tmpdir(), 'create-release-diagnostics-'));
+  const temporaryRoot = await mkdtemp(join(tmpdir(), 'create-release-diagnostics-'));
+  let runnerTemp = temporaryRoot;
+  if (options.aliasRunnerTemp) {
+    const canonicalRunnerTemp = join(temporaryRoot, 'canonical-runner-temp');
+    runnerTemp = join(temporaryRoot, 'aliased-runner-temp');
+    await mkdir(canonicalRunnerTemp);
+    await symlink(canonicalRunnerTemp, runnerTemp, process.platform === 'win32' ? 'junction' : 'dir');
+  }
   const sessionDirectory = join(runnerTemp, 'release-session');
   const contextPath = join(sessionDirectory, 'context.txt');
   const factsPath = join(sessionDirectory, 'facts.json');
@@ -166,7 +174,7 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
     }
 
     process.exitCode = previousExitCode;
-    await rm(runnerTemp, { recursive: true, force: true });
+    await rm(temporaryRoot, { recursive: true, force: true });
   }
 }
 
@@ -182,6 +190,14 @@ void test('run reports safe diagnostics without changing action input lookup or 
     assert.equal(result.exitCode, undefined);
     assert.equal(result.stderr, '');
     assert.equal(result.observedKey, 'openai-secret-value');
+    assert.match(result.body ?? '', /^This release improves delivery reliability\./u);
+  });
+
+  await context.test('canonicalizes an aliased RUNNER_TEMP before validating the body path', async () => {
+    const result = await exerciseRun({ aliasRunnerTemp: true });
+
+    assert.equal(result.exitCode, undefined);
+    assert.equal(result.stderr, '');
     assert.match(result.body ?? '', /^This release improves delivery reliability\./u);
   });
 
