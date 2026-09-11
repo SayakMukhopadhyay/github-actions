@@ -227,12 +227,3 @@ dist
 ## Custom
 AgentNotes
 .tools
-# Direct GitHub Actions commit their generated runtime bundles.
-!validate-static-site/dist/
-!validate-static-site/dist/**
-!dispatch-pages-deployment/dist/
-!dispatch-pages-deployment/dist/**
-!actions/argocd-verify-deployment/dist/
-!actions/argocd-verify-deployment/dist/**
-!actions/helm-deployment-state/dist/
-!actions/helm-deployment-state/dist/**
