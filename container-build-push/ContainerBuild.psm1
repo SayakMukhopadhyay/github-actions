@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'OciArtifactProbe.psm1') -Force
 
 function Initialize-ContainerBuild {
     $version = Assert-SingleLine $env:INPUT_VERSION version
@@ -51,4 +52,34 @@ function Initialize-ContainerBuild {
     Write-GitHubOutput 'created' ([DateTimeOffset]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))
 }
 
-Export-ModuleMember -Function Initialize-ContainerBuild
+function Get-ContainerArtifactState {
+    $imageReference = Assert-SingleLine $env:IMAGE_REFERENCE 'image-reference'
+    $probe = Invoke-OciArtifactProbe docker @(
+        'buildx'
+        'imagetools'
+        'inspect'
+        '--format'
+        '{{json .Manifest}}'
+        $imageReference
+    )
+
+    if (-not $probe.Exists) {
+        Write-GitHubOutput 'exists' 'false'
+        Write-GitHubOutput 'image-digest' ''
+        return
+    }
+
+    try {
+        $manifest = $probe.StandardOutput | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        throw 'Docker returned invalid manifest JSON for the existing image reference'
+    }
+    if ($manifest.digest -notmatch '^sha256:[0-9a-f]{64}$') {
+        throw 'Docker did not return a valid manifest digest for the existing image reference'
+    }
+
+    Write-GitHubOutput 'exists' 'true'
+    Write-GitHubOutput 'image-digest' $manifest.digest
+}
+
+Export-ModuleMember -Function Initialize-ContainerBuild, Get-ContainerArtifactState

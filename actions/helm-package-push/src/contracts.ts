@@ -2,7 +2,7 @@ export interface PrepareHelmPackageOptions {
   workspace: string;
   workingDirectory: string;
   development: boolean;
-  commitSha: string;
+  sourceRevision: string;
   runnerTemp: string;
 }
 

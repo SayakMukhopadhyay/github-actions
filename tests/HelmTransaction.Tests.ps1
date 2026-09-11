@@ -34,11 +34,15 @@ Describe 'Helm package transaction' {
 
             ''
         }
+        Mock Invoke-OciArtifactProbe -ModuleName HelmTransaction {
+            [pscustomobject]@{ Exists = $false; StandardOutput = '' }
+        }
     }
 
     It 'adds HTTP repositories and builds, lints, and packages a stable chart' {
         Invoke-HelmTransaction
 
+        Should -Invoke Invoke-OciArtifactProbe -ModuleName HelmTransaction -Times 0
         Should -Invoke Invoke-NativeProcess -ModuleName HelmTransaction -ParameterFilter {
             ($ArgumentList -join ' ') -eq 'repo add stable https://charts.example.com'
         }
@@ -81,6 +85,52 @@ Describe 'Helm package transaction' {
         Should -Invoke Invoke-NativeProcess -ModuleName HelmTransaction -ParameterFilter {
             ($ArgumentList -join ' ') -eq 'push application-1.2.3.tgz oci://ghcr.io/owner/charts'
         }
+    }
+
+    It 'skips the complete Helm transaction when the exact chart version exists' {
+        $env:INPUT_PUSH = 'true'
+        Mock Invoke-OciArtifactProbe -ModuleName HelmTransaction {
+            [pscustomobject]@{ Exists = $true; StandardOutput = 'chart metadata' }
+        }
+
+        Invoke-HelmTransaction
+
+        Should -Invoke Invoke-OciArtifactProbe -ModuleName HelmTransaction -Times 1 -ParameterFilter {
+            $FilePath -eq 'helm' -and
+            ($ArgumentList -join ' ') -eq 'show chart oci://ghcr.io/owner/charts/application --version 1.2.3'
+        }
+        Should -Invoke Invoke-NativeProcess -ModuleName HelmTransaction -Times 0
+    }
+
+    It 'runs the current transaction once when the exact chart version is absent' {
+        $env:INPUT_PUSH = 'true'
+        Mock Invoke-OciArtifactProbe -ModuleName HelmTransaction {
+            [pscustomobject]@{ Exists = $false; StandardOutput = '' }
+        }
+
+        Invoke-HelmTransaction
+
+        Should -Invoke Invoke-NativeProcess -ModuleName HelmTransaction -Times 1 -ParameterFilter {
+            ($ArgumentList -join ' ') -eq 'dependency build'
+        }
+        Should -Invoke Invoke-NativeProcess -ModuleName HelmTransaction -Times 1 -ParameterFilter {
+            ($ArgumentList -join ' ') -eq 'lint .'
+        }
+        Should -Invoke Invoke-NativeProcess -ModuleName HelmTransaction -Times 1 -ParameterFilter {
+            ($ArgumentList -join ' ') -eq 'package . --version 1.2.3'
+        }
+        Should -Invoke Invoke-NativeProcess -ModuleName HelmTransaction -Times 1 -ParameterFilter {
+            ($ArgumentList -join ' ') -eq 'push application-1.2.3.tgz oci://ghcr.io/owner/charts'
+        }
+    }
+
+    It 'does not start the Helm transaction after an ambiguous probe failure' {
+        $env:INPUT_PUSH = 'true'
+        Mock Invoke-OciArtifactProbe -ModuleName HelmTransaction { throw 'authentication failed' }
+
+        { Invoke-HelmTransaction } | Should -Throw '*authentication failed*'
+
+        Should -Invoke Invoke-NativeProcess -ModuleName HelmTransaction -Times 0
     }
 
     It 'rejects truncated and unsafe dependency repository records' {

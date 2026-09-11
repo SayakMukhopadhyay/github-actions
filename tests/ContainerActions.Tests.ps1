@@ -13,6 +13,7 @@ Describe 'Container action preparation' {
             'INPUT_REGISTRY'
             'INPUT_IMAGE_REPOSITORY'
             'SOURCE_REPOSITORY'
+            'IMAGE_REFERENCE'
             'INPUT_SOURCE_DIGEST'
             'INPUT_TAG'
             'GITHUB_OUTPUT'
@@ -47,6 +48,51 @@ Describe 'Container action preparation' {
 
         $env:INPUT_IMAGE_REPOSITORY = "owner/repo`nnext"
         { Initialize-ContainerBuild } | Should -Throw
+    }
+
+    It 'returns the existing manifest digest for an exact image reference' {
+        $digest = 'sha256:' + ('a' * 64)
+        $env:IMAGE_REFERENCE = 'ghcr.io/owner/repository:1.2.3'
+        Mock Invoke-OciArtifactProbe -ModuleName ContainerBuild {
+            [pscustomobject]@{
+                Exists         = $true
+                StandardOutput = "{`"digest`":`"$digest`"}"
+            }
+        }
+
+        Get-ContainerArtifactState
+
+        Should -Invoke Invoke-OciArtifactProbe -ModuleName ContainerBuild -Times 1 -ParameterFilter {
+            $FilePath -eq 'docker' -and
+            ($ArgumentList -join ' ') -eq (
+                'buildx imagetools inspect --format {{json .Manifest}} ' + $env:IMAGE_REFERENCE
+            )
+        }
+        $output = Get-Content -Raw $env:GITHUB_OUTPUT
+        $output | Should -Match 'exists=true'
+        $output | Should -Match "image-digest=$digest"
+    }
+
+    It 'reports an exact image reference as absent without a digest' {
+        $env:IMAGE_REFERENCE = 'ghcr.io/owner/repository:1.2.3'
+        Mock Invoke-OciArtifactProbe -ModuleName ContainerBuild {
+            [pscustomobject]@{ Exists = $false; StandardOutput = '' }
+        }
+
+        Get-ContainerArtifactState
+
+        $output = Get-Content -Raw $env:GITHUB_OUTPUT
+        $output | Should -Match 'exists=false'
+        $output | Should -Match "image-digest=$([Environment]::NewLine)"
+    }
+
+    It 'rejects malformed manifest output from a successful image probe' {
+        $env:IMAGE_REFERENCE = 'ghcr.io/owner/repository:1.2.3'
+        Mock Invoke-OciArtifactProbe -ModuleName ContainerBuild {
+            [pscustomobject]@{ Exists = $true; StandardOutput = '{"digest":"invalid"}' }
+        }
+
+        { Get-ContainerArtifactState } | Should -Throw '*valid manifest digest*'
     }
 
     It 'constructs digest and tag references for promotion' {

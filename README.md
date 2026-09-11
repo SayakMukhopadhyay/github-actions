@@ -156,7 +156,7 @@ Output `username` is the ACR token username `00000000-0000-0000-0000-00000000000
 
 ## `container-build-push`
 
-`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes exactly one reference, `registry/image-repository[/component]:version`. It forwards optional multiline `build-args`, `build-contexts`, `cache-from`, and `cache-to` inputs unchanged to Docker Buildx and passes the optional `auth-token` input to BuildKit safely.
+`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes exactly one reference, `registry/image-repository[/component]:version`. It forwards optional multiline `build-args`, `build-contexts`, `cache-from`, and `cache-to` inputs unchanged to Docker Buildx and passes the optional `auth-token` input to BuildKit safely. When `push` is true, it logs in normally and inspects that exact reference: an existing reference skips the build and returns its manifest digest, while an absent reference is built and pushed once. When `push` is false, no registry probe occurs and the local build runs as before.
 
 ```yaml
 - id: image
@@ -184,7 +184,7 @@ cache-to: type=gha,mode=max,scope=docs
 
 Both inputs also accept Docker Buildx's newline-delimited form for multiple cache entries. Values are forwarded verbatim; backend choice, scope naming, export mode, and required workflow permissions remain the caller's responsibility.
 
-For publication, provide `username` and `password` (the password may be `github.token`). GHCR requires `packages: write`.
+For publication, provide `username` and `password` (the password may be `github.token`). GHCR requires `packages: write`. The mandatory push-time check uses Docker's registry-neutral manifest inspection and treats only the standard OCI `MANIFEST_UNKNOWN` and `NAME_UNKNOWN` responses as absent; authentication, network, invalid-reference, and other probe failures fail the action. This is existence-based idempotence, not client-side immutability or race locking; registry policy remains authoritative.
 
 ## `container-promote`
 
@@ -212,21 +212,23 @@ Registry authentication failures, rejected tag writes, and other Docker command 
 
 ## `helm-package-push`
 
-`SayakMukhopadhyay/github-actions/helm-package-push@v1` validates the independent chart version authority, builds dependencies, lints, packages in the chart directory, and optionally pushes through Helm OCI.
+`SayakMukhopadhyay/github-actions/helm-package-push@v1` validates the independent chart version authority, builds dependencies, lints, packages in the chart directory, and optionally pushes through Helm OCI. When `push` is true, it logs in normally and asks Helm for the exact OCI chart name and version before starting the transaction. An existing chart skips dependency build, lint, package, and push; an absent chart runs the existing transaction once. When `push` is false, no registry probe occurs and the local Helm transaction runs as before.
 
 ```yaml
 - id: chart
   uses: SayakMukhopadhyay/github-actions/helm-package-push@v1
   with:
     development: 'true'
+    source-revision: ${{ github.sha }}
     app-version: build-${{ github.sha }}
     registry: ghcr.io
     repository: ${{ github.repository_owner }}/charts
     working-directory: .
-    push: 'false'
+    username: ${{ github.actor }}
+    password: ${{ github.token }}
 ```
 
-For development packages, `chart-version` is exactly `0.0.0-build-<full lowercase commit SHA>` and is independent of `charts/VERSION`. For stable packages, it equals `charts/VERSION`. For publication, provide `username` and `password`. Outputs are `chart-name` and `chart-version`.
+For development packages, `chart-version` is exactly `0.0.0-build-<full lowercase commit SHA>` and is independent of `charts/VERSION`. The optional `source-revision` controls that SHA and defaults to `github.sha`; stable packages continue to use `charts/VERSION`. For publication, provide `username` and `password`. The mandatory push-time exact-reference check uses Helm's registry-neutral OCI lookup and the same fail-closed standard OCI not-found classification as the container action. Outputs are `chart-name` and `chart-version`.
 
 ## `helm-deployment-state`
 

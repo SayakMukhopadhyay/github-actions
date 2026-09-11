@@ -39,7 +39,7 @@ void test('helm-package-push prepares stable and development chart metadata', ()
     workspace: stableRepository,
     workingDirectory: '.',
     development: false,
-    commitSha: 'not-needed-for-stable-builds',
+    sourceRevision: 'not-needed-for-stable-builds',
     runnerTemp: stable.runnerTemp,
   });
 
@@ -55,7 +55,7 @@ void test('helm-package-push prepares stable and development chart metadata', ()
     workspace: developmentRepository,
     workingDirectory: '.',
     development: true,
-    commitSha,
+    sourceRevision: commitSha,
     runnerTemp: development.runnerTemp,
   });
 
@@ -80,7 +80,7 @@ void test('helm-package-push records only HTTP dependency repositories without e
     workspace: repository,
     workingDirectory: '.',
     development: false,
-    commitSha: '',
+    sourceRevision: '',
     runnerTemp: fixture.runnerTemp,
   });
 
@@ -104,7 +104,7 @@ void test('helm-package-push rejects invalid authorities and paths', () => {
         workspace: repository,
         workingDirectory: '.',
         development: false,
-        commitSha: '',
+        sourceRevision: '',
         runnerTemp: fixture.runnerTemp,
       }),
     /exactly one line/,
@@ -117,7 +117,7 @@ void test('helm-package-push rejects invalid authorities and paths', () => {
         workspace: repository,
         workingDirectory: '.',
         development: false,
-        commitSha: '',
+        sourceRevision: '',
         runnerTemp: fixture.runnerTemp,
       }),
     /field version mismatch/,
@@ -129,7 +129,7 @@ void test('helm-package-push rejects invalid authorities and paths', () => {
         workspace: repository,
         workingDirectory: '..',
         development: false,
-        commitSha: '',
+        sourceRevision: '',
         runnerTemp: fixture.runnerTemp,
       }),
     /escapes the checkout|chart directory does not exist/,
@@ -146,7 +146,7 @@ void test('helm-package-push requires a full commit SHA only for development pac
         workspace: repository,
         workingDirectory: '.',
         development: true,
-        commitSha: 'abcdef',
+        sourceRevision: 'abcdef',
         runnerTemp: fixture.runnerTemp,
       }),
     /full 40-character commit SHA/,

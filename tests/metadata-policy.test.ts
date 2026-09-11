@@ -147,6 +147,7 @@ void test('container build metadata keeps one version tag, exact forwarding, and
   assert.equal(buildSteps[0]?.with?.['cache-from'], '${{ inputs.cache-from }}');
   assert.equal(buildSteps[0]?.with?.['cache-to'], '${{ inputs.cache-to }}');
   assert.equal(buildSteps[0]?.with?.tags, '${{ steps.prepare.outputs.image-reference }}');
+  assert.equal(buildSteps[0]?.if, "inputs.push != 'true' || steps.probe.outputs.exists != 'true'");
 
   assert.equal(metadata.inputs?.version?.required, true);
   assert.equal('mode' in (metadata.inputs ?? {}), false);
@@ -155,9 +156,24 @@ void test('container build metadata keeps one version tag, exact forwarding, and
   assert.equal(metadata.outputs?.['image-reference']?.value, '${{ steps.prepare.outputs.image-reference }}');
   assert.equal(
     metadata.outputs?.['image-digest']?.value,
-    "${{ inputs.push == 'true' && steps.build.outputs.digest || '' }}",
+    "${{ inputs.push == 'true' && (steps.probe.outputs.image-digest || steps.build.outputs.digest) || '' }}",
   );
   assert.deepEqual(Object.keys(metadata.outputs ?? {}).sort(), ['image-digest', 'image-reference']);
+
+  const probe = (metadata.runs?.steps ?? []).find((step) => step.id === 'probe');
+  assert.equal(probe?.if, "inputs.push == 'true'");
+  assert.equal(probe?.env?.IMAGE_REFERENCE, '${{ steps.prepare.outputs.image-reference }}');
+  assert.match(String(probe?.run), /probe-image\.ps1/u);
+});
+
+void test('Helm package metadata requires exact-version publication checks while preserving source authority', () => {
+  const metadata = readAction('helm-package-push');
+
+  assert.equal(metadata.inputs?.['source-revision']?.required, false);
+  assert.equal(metadata.inputs?.['source-revision']?.default, '');
+
+  const preparation = (metadata.runs?.steps ?? []).find((step) => step.id === 'prepare');
+  assert.equal(preparation?.with?.['source-revision'], '${{ inputs.source-revision || github.sha }}');
 });
 
 void test('container promotion metadata performs one direct digest-to-tag operation', () => {

@@ -11,7 +11,7 @@ export function run(): void {
       workspace: process.env.GITHUB_WORKSPACE ?? process.cwd(),
       workingDirectory: core.getInput('working-directory') || '.',
       development: core.getInput('development') === 'true',
-      commitSha: core.getInput('commit-sha'),
+      sourceRevision: core.getInput('source-revision'),
       runnerTemp: process.env.RUNNER_TEMP ?? process.cwd(),
     });
 

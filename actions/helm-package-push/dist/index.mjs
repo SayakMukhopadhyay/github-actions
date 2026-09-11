@@ -22972,8 +22972,8 @@ function prepareHelmPackage(options) {
 	if (declaredVersion !== baseVersion) fail(`Chart.yaml field version mismatch: expected '${baseVersion}', got '${declaredVersion}'`);
 	let chartVersion = baseVersion;
 	if (options.development) {
-		if (!FULL_COMMIT_SHA.test(options.commitSha)) fail("github.sha must be a full 40-character commit SHA for development packages");
-		chartVersion = `0.0.0-build-${options.commitSha.toLowerCase()}`;
+		if (!FULL_COMMIT_SHA.test(options.sourceRevision)) fail("source revision must be a full 40-character commit SHA for development packages");
+		chartVersion = `0.0.0-build-${options.sourceRevision.toLowerCase()}`;
 	}
 	const runnerTemp = realpathSync(options.runnerTemp);
 	const preparationDirectory = mkdtempSync(join(runnerTemp, "helm-package-push-"));
@@ -22994,7 +22994,7 @@ function run() {
 			workspace: process.env.GITHUB_WORKSPACE ?? process.cwd(),
 			workingDirectory: getInput("working-directory") || ".",
 			development: getInput("development") === "true",
-			commitSha: getInput("commit-sha"),
+			sourceRevision: getInput("source-revision"),
 			runnerTemp: process.env.RUNNER_TEMP ?? process.cwd()
 		});
 		setOutput("chart-directory", result.chartDirectory);

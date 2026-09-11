@@ -3,6 +3,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'OciArtifactProbe.psm1') -Force
 
 function Invoke-HelmTransaction {
     $workspaceInput = if ($env:GITHUB_WORKSPACE) {
@@ -31,6 +32,34 @@ function Invoke-HelmTransaction {
     }
     if ($chartVersion -notmatch '^((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)|0\.0\.0-build-[0-9a-f]{40})$') {
         throw 'chart-version is invalid'
+    }
+
+    $destination = $null
+    if ($env:INPUT_PUSH -eq 'true') {
+        $registry = if ($env:INPUT_REGISTRY) {
+            $env:INPUT_REGISTRY
+        } else {
+            'ghcr.io'
+        }
+        $repository = if ($env:INPUT_REPOSITORY) {
+            $env:INPUT_REPOSITORY
+        } elseif ($env:REPOSITORY_OWNER) {
+            "$env:REPOSITORY_OWNER/charts"
+        } else {
+            throw 'github.repository_owner is required'
+        }
+        $destination = "oci://$($registry.ToLowerInvariant())/$($repository.ToLowerInvariant())"
+
+        $probe = Invoke-OciArtifactProbe helm @(
+            'show'
+            'chart'
+            "$destination/$chartName"
+            '--version'
+            $chartVersion
+        )
+        if ($probe.Exists) {
+            return
+        }
     }
 
     Push-Location $chart
@@ -69,19 +98,6 @@ function Invoke-HelmTransaction {
         }
 
         if ($env:INPUT_PUSH -eq 'true') {
-            $registry = if ($env:INPUT_REGISTRY) {
-                $env:INPUT_REGISTRY
-            } else {
-                'ghcr.io'
-            }
-            $repository = if ($env:INPUT_REPOSITORY) {
-                $env:INPUT_REPOSITORY
-            } elseif ($env:REPOSITORY_OWNER) {
-                "$env:REPOSITORY_OWNER/charts"
-            } else {
-                throw 'github.repository_owner is required'
-            }
-            $destination = "oci://$($registry.ToLowerInvariant())/$($repository.ToLowerInvariant())"
             Invoke-NativeProcess helm @('push', $packagePath, $destination) | Out-Null
         }
     } finally {

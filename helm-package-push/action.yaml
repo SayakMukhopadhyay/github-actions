@@ -5,6 +5,10 @@ inputs:
     description: Whether to create version 0.0.0-build-<full lowercase commit SHA>
     required: false
     default: 'false'
+  source-revision:
+    description: Optional full commit SHA used for development versions; defaults to github.sha
+    required: false
+    default: ''
   username:
     description: Registry username
     required: false
@@ -57,7 +61,7 @@ runs:
       with:
         development: ${{ inputs.development }}
         working-directory: ${{ inputs.working-directory }}
-        commit-sha: ${{ github.sha }}
+        source-revision: ${{ inputs.source-revision || github.sha }}
     - name: Log in to OCI registry
       if: inputs.push == 'true'
       shell: pwsh

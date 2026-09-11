@@ -153,10 +153,10 @@ export function prepareHelmPackage(options: PrepareHelmPackageOptions): HelmPack
   let chartVersion = baseVersion;
 
   if (options.development) {
-    if (!FULL_COMMIT_SHA.test(options.commitSha)) {
-      fail('github.sha must be a full 40-character commit SHA for development packages');
+    if (!FULL_COMMIT_SHA.test(options.sourceRevision)) {
+      fail('source revision must be a full 40-character commit SHA for development packages');
     }
-    chartVersion = `0.0.0-build-${options.commitSha.toLowerCase()}`;
+    chartVersion = `0.0.0-build-${options.sourceRevision.toLowerCase()}`;
   }
 
   const runnerTemp = realpathSync(options.runnerTemp);

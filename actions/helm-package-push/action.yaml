@@ -7,8 +7,8 @@ inputs:
   working-directory:
     description: Working directory of the project
     required: true
-  commit-sha:
-    description: Commit SHA used for development chart versions
+  source-revision:
+    description: Source revision used for development chart versions
     required: true
 outputs:
   chart-directory:

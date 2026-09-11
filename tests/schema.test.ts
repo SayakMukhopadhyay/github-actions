@@ -60,7 +60,13 @@ void test('accepts valid inputs for each documented consumer action', async () =
         tag: 'v1.2.3',
       },
     ],
-    ['helm-package-push', {}],
+    [
+      'helm-package-push',
+      {
+        development: 'true',
+        'source-revision': 'abcdef1234567890abcdef1234567890abcdef12',
+      },
+    ],
     [
       'helm-deployment-state',
       {
