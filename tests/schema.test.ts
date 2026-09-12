@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import test, { before } from 'node:test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +23,28 @@ function workflowFor(uses: string, withInputs: Record<string, string> = {}): obj
       },
     },
   };
+}
+
+async function consumerActionNames(): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true });
+  const candidates = entries.filter((entry) => entry.isDirectory());
+  const actionNames = await Promise.all(
+    candidates.map(async (entry) => {
+      try {
+        await access(path.join(root, entry.name, 'action.yaml'));
+        return entry.name;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          return undefined;
+        }
+        throw error;
+      }
+    }),
+  );
+
+  return actionNames
+    .filter((actionName): actionName is string => actionName !== undefined)
+    .sort((left, right) => left.localeCompare(right));
 }
 
 void before(async () => {
@@ -131,6 +153,14 @@ void test('accepts valid inputs for each documented consumer action', async () =
       },
     ],
   ];
+  const fixtureActionNames = validActions.map(([action]) => action);
+
+  assert.equal(new Set(fixtureActionNames).size, fixtureActionNames.length, 'consumer action fixtures must be unique');
+  assert.deepEqual(
+    fixtureActionNames.toSorted((left, right) => left.localeCompare(right)),
+    await consumerActionNames(),
+    'consumer action fixtures must exactly cover every root-level action',
+  );
 
   for (const [action, withInputs] of validActions) {
     assert.equal(

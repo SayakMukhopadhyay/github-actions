@@ -11,9 +11,9 @@ void test('npm owns every Node.js development task', async () => {
   };
   const scripts = packageMetadata.scripts ?? {};
 
-  assert.match(scripts.format ?? '', /^prettier /u);
-  assert.match(scripts['format:check'] ?? '', /^prettier /u);
-  assert.match(scripts.lint ?? '', /^eslint /u);
+  assert.equal(scripts.format, 'prettier --write "*" "[!.]*/**/*" ".github/**/*" --ignore-unknown');
+  assert.equal(scripts['format:check'], 'prettier --check "*" "[!.]*/**/*" ".github/**/*" --ignore-unknown');
+  assert.equal(scripts.lint, 'eslint .');
   assert.match(scripts.typecheck ?? '', /^tsc /u);
   assert.match(scripts.test ?? '', /^node --test /u);
   assert.match(scripts.generate ?? '', /^node tooling\/generate-action-schema\.ts$/u);

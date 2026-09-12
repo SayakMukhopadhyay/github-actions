@@ -4,14 +4,16 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', 'node_modules/**'],
+    ignores: ['.tools/**', '**/dist/**', 'node_modules/**'],
   },
-  eslint.configs.recommended,
-  tseslint.configs.recommendedTypeChecked,
-  tseslint.configs.stylisticTypeChecked,
-  eslintConfigPrettier,
   {
     files: ['**/*.ts'],
+    extends: [
+      eslint.configs.recommended,
+      ...tseslint.configs.recommendedTypeChecked,
+      ...tseslint.configs.stylisticTypeChecked,
+      eslintConfigPrettier,
+    ],
     rules: {
       curly: ['error', 'all'],
       'no-restricted-imports': [
