@@ -33,7 +33,7 @@ void test('accepts valid inputs for each documented consumer action', async () =
   const validActions: [string, Record<string, string>][] = [
     ['check-version', {}],
     ['is-file-changed', { pattern: '^charts/', 'base-ref': 'chart-v1.2.3', 'head-ref': 'main' }],
-    ['bump-version', { token: '${{ secrets.GITHUB_TOKEN }}' }],
+    ['bump-version', { token: '${{ secrets.GITHUB_TOKEN }}', increment: 'patch' }],
     [
       'checkout-dependencies',
       {
@@ -177,13 +177,13 @@ void test('rejects missing required Argo CD deployment verification inputs', asy
   );
 });
 
-void test('permits metadata inputs that are required but have a default', async () => {
+void test('rejects a missing required bump-version increment', async () => {
   assert.equal(
     await validateWorkflow(
       workflowFor('SayakMukhopadhyay/github-actions/bump-version@v1', {
         token: '${{ secrets.GITHUB_TOKEN }}',
       }),
     ),
-    true,
+    false,
   );
 });

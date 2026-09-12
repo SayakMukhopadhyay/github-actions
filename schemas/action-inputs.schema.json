@@ -135,8 +135,7 @@
                           },
                           "increment": {
                             "type": ["string", "number", "boolean"],
-                            "description": "patch, minor, or major",
-                            "default": "patch"
+                            "description": "patch, minor, or major"
                           },
                           "working-directory": {
                             "type": ["string", "number", "boolean"],
@@ -155,7 +154,7 @@
                           }
                         },
                         "additionalProperties": false,
-                        "required": ["token"]
+                        "required": ["token", "increment"]
                       }
                     },
                     "required": ["with"]
