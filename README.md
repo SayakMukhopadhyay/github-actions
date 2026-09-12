@@ -1,8 +1,8 @@
 # Personal GitHub Actions
 
-Seventeen GitHub Actions for Go and npm dependencies, Azure registry authentication, static-site delivery, container images, Helm charts, immutable release tags, GitHub Releases, and GitOps inspection, promotion, and deployment verification. Workflow orchestration stays in composite actions; parsing, validation, API calls, and file mutation that benefit from structured code are authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
+Reusable GitHub Actions for Go and npm dependencies, Azure registry authentication, static-site delivery, container images, Helm charts, immutable release tags, GitHub Releases, and GitOps promotion and deployment verification. Actions own reusable mechanics; consuming workflows retain jobs, conditions, permissions, environments, concurrency, ordering, and approval gates. Parsing, validation, API calls, and file mutation that benefit from structured code are authored in TypeScript and committed as bundled ESM. Invoked external actions are pinned to immutable commits.
 
-The moving `@v1` release contains all seventeen actions documented here.
+This README describes `main`. Changes on `main` are unavailable through `@v1` until the moving major tag is explicitly promoted.
 
 ## Input conventions
 
@@ -11,6 +11,21 @@ The moving `@v1` release contains all seventeen actions documented here.
 - Boolean values are lowercase `true` or `false`.
 - Dependency checkout supports Go modules and lockfile-based npm projects. Python, Java, Yarn, and protobuf generation are not included.
 - V1 targets GitHub-hosted Ubuntu runners. `chart-update-deploy` and `static-site-update-deploy` require `yq` v4; the TypeScript-backed version and packaging actions parse YAML from their bundles.
+
+Registry credentials follow one shared fail-early policy:
+
+| Action or mode                       | Credential requirement                                                         |
+| ------------------------------------ | ------------------------------------------------------------------------------ |
+| Container build with `push: 'true'`  | Both `username` and `password` are required.                                   |
+| Container build with `push: 'false'` | Neither credential or a complete pair is accepted; a partial pair is rejected. |
+| Helm package with `push: 'true'`     | Both `username` and `password` are required.                                   |
+| Helm package with `push: 'false'`    | Neither credential or a complete pair is accepted; a partial pair is rejected. |
+| Container inspection                 | Neither credential or a complete pair is accepted; a partial pair is rejected. |
+| Container promotion                  | Both `username` and `password` are required.                                   |
+| Chart update with `registry`         | Both `username` and `password` are required.                                   |
+| Chart update without `registry`      | Credentials are forbidden because the action cannot use them.                  |
+
+Validation runs before registry login and before publication or GitOps mutation. Container build uses a separate exact-reference probe step because Buildx is conditionally invoked; Helm package probes inside its transaction. Both paths use the same shared fail-closed OCI policy: only standard not-found responses mean absent, while authentication, transport, and malformed-reference failures stop the action.
 
 ## `check-version`
 
@@ -260,7 +275,7 @@ For development packages, `chart-version` is exactly `0.0.0-build-<full lowercas
     image-tag: build-${{ github.sha }}
 ```
 
-The preferred `token` is a short-lived GitHub App installation token limited to the target repository with `contents: write`; a repository-limited fine-grained PAT is the fallback. Optional OCI authentication uses `registry`, `username`, and `password`.
+The preferred `token` is a short-lived GitHub App installation token limited to the target repository with `contents: write`; a repository-limited fine-grained PAT is the fallback. OCI authentication uses `registry`, `username`, and `password`: supplying `registry` requires both credentials, while credentials are rejected when `registry` is empty.
 
 `chart-version` and `image-tag` are independently optional, but at least one is required. By default, the action updates `main` in `SayakMukhopadhyay/k8s-landscape-charts`, derives the wrapper chart path as `<chart-name>/envs/<environment>`, and selects the one dependency whose name or alias matches `chart-name`. `target-repository`, `target-ref`, `wrapper-chart-path`, and `dependency` remain available for repositories whose layout or dependency selector differs. When the dependency has an alias, the alias is the values root; otherwise the dependency name is used.
 
@@ -310,7 +325,7 @@ The optional `smoke-url` receives the same Cloudflare Access headers and must re
 
 By default, the action updates `main` in `SayakMukhopadhyay/k8s-landscape-charts` and derives the wrapper chart path as `<chart-name>/envs/<environment>`. `target-repository`, `target-ref`, and `wrapper-chart-path` remain available for repositories whose location or layout differs.
 
-The wrapper must contain exactly one dependency named `static-sites`, aliased as `staticSites`, and its `values.yaml` must already contain a string at `staticSites.image.tag`. The action updates only that value, runs `helm lint`, stages only `values.yaml`, treats an already-current tag as a successful no-op, and relies on a normal non-force push to reject races. It never changes or downloads the fixed `static-sites` dependency.
+The wrapper must contain exactly one dependency named `static-sites`, aliased as `staticSites`, and its `values.yaml` must already contain a string at `staticSites.image.tag`. The action updates only that value, always runs `helm lint` including for a no-op, stages only `values.yaml`, and treats an already-current tag as success. It uses the shared GitOps transaction's normal non-force push behavior: one unrelated concurrent update is refreshed and reapplied, while protected-state changes, divergent history, and a second failed push stop without overwriting the remote. It never changes or downloads the fixed `static-sites` dependency.
 
 ## `release-tags`
 
@@ -425,10 +440,10 @@ The wrapper references SchemaStore's live workflow schema and the committed `sch
 The repository is one npm package and does not use workspaces. JavaScript actions keep their TypeScript entry point, `action.yaml`, and generated `dist/index.mjs` together; maintained command transactions use PowerShell 7.4 or newer:
 
 - `check-version/`, `validate-static-site/`, and `dispatch-pages-deployment/` are directly callable as JavaScript actions.
-- `actions/is-file-changed/`, `actions/bump-version/`, `actions/helm-package-push/`, and `actions/create-release/` are implementation actions invoked by their root-level composite wrappers.
+- `actions/argocd-verify-deployment/`, `actions/bump-version/`, `actions/create-release/`, `actions/helm-package-push/`, and `actions/is-file-changed/` are private implementation actions invoked by their root-level composite wrappers.
 - `tooling/` contains repository-maintenance programs such as schema generation.
 
-`powershell/ActionRuntime.psm1` is intentionally narrow: native process execution, GitHub workflow protocol helpers, single-line validation, and contained temporary cleanup. Git, Helm, release, container, and deployment transactions remain action-local modules.
+`powershell/ActionRuntime.psm1` is intentionally narrow: native process execution, GitHub workflow protocol helpers, single-line validation, and contained temporary cleanup. `ContainerImage.psm1` owns normalized image names plus tag and digest references, `RegistryCredentials.psm1` owns the shared credential policy, `OciArtifactProbe.psm1` owns fail-closed artifact existence classification, and `GitOpsChartUpdate.psm1` owns the chart mutation, lint, commit, and safe retry transaction. Action-local modules remain thin adapters where family-specific inputs or messages differ.
 
 Install the exact locked dependencies, pinned PowerShell modules, and verified native tools with Node `24.20.0` and PowerShell 7.4 or newer:
 
