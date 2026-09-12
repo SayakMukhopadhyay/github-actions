@@ -23,7 +23,7 @@ Describe 'Chart update validation' {
         $env:INPUT_TARGET_REF = 'main'
         $env:INPUT_WRAPPER_CHART_PATH = $null
 
-        Mock Invoke-NativeProcess -ModuleName ChartUpdate {
+        Mock Invoke-NativeProcess -ModuleName GitOpsChartUpdate {
             if ($FilePath -eq 'yq' -and $ArgumentList[0] -eq '--version') {
                 return 'yq version v4.53.3'
             }
@@ -67,7 +67,7 @@ Describe 'Chart update validation' {
 
     It 'rejects an invalid target branch before mutation' {
         $env:INPUT_IMAGE_TAG = 'good'
-        Mock Invoke-NativeProcess -ModuleName ChartUpdate `
+        Mock Invoke-NativeProcess -ModuleName GitOpsChartUpdate `
             -ParameterFilter { $ArgumentList -contains 'check-ref-format' } `
             -MockWith {
             [pscustomobject]@{
@@ -97,7 +97,7 @@ Describe 'Static-site update validation' {
         $env:INPUT_TARGET_REF = 'main'
         $env:INPUT_WRAPPER_CHART_PATH = $null
 
-        Mock Invoke-NativeProcess -ModuleName StaticSiteUpdate {
+        Mock Invoke-NativeProcess -ModuleName GitOpsChartUpdate {
             if ($FilePath -eq 'yq' -and $ArgumentList[0] -eq '--version') {
                 return 'yq version v4.53.3'
             }
@@ -119,7 +119,7 @@ Describe 'Static-site update validation' {
 
     It 'requires exactly one fixed static-sites dependency' {
         $env:INPUT_IMAGE_VERSION = 'good'
-        Mock Invoke-NativeProcess -ModuleName StaticSiteUpdate `
+        Mock Invoke-NativeProcess -ModuleName GitOpsChartUpdate `
             -ParameterFilter { $FilePath -eq 'yq' -and $ArgumentList[0] -eq '-er' } `
             -MockWith { '2' }
 
@@ -164,7 +164,7 @@ Describe 'Chart update transaction behavior' {
         $script:pushExitCodes.Enqueue(0)
         $script:pushCount = 0
 
-        Mock Invoke-NativeProcess -ModuleName ChartUpdate {
+        Mock Invoke-NativeProcess -ModuleName GitOpsChartUpdate {
             if ($FilePath -eq 'yq') {
                 if ($ArgumentList[0] -eq '--version') {
                     return 'yq version v4.53.3'
@@ -303,10 +303,10 @@ Describe 'Chart update transaction behavior' {
 
         Invoke-ChartUpdate
 
-        Should -Invoke Invoke-NativeProcess -ModuleName ChartUpdate -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 1 -ParameterFilter {
             $FilePath -eq 'helm' -and ($ArgumentList -join ' ') -like 'lint *'
         }
-        Should -Invoke Invoke-NativeProcess -ModuleName ChartUpdate -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 1 -ParameterFilter {
             $FilePath -eq 'git' -and $ArgumentList -contains 'commit'
         }
         (Get-Content -Raw $env:GITHUB_OUTPUT) | Should -Match "commit-sha=$('2' * 40)"
@@ -317,7 +317,7 @@ Describe 'Chart update transaction behavior' {
 
         Invoke-ChartUpdate
 
-        Should -Invoke Invoke-NativeProcess -ModuleName ChartUpdate -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 1 -ParameterFilter {
             $FilePath -eq 'helm' -and ($ArgumentList -join ' ') -like 'dependency update *'
         }
         $script:untrackedPaths | Should -Be @('app/envs/prod/charts/app-2.0.0.tgz')
@@ -330,7 +330,7 @@ Describe 'Chart update transaction behavior' {
 
         Invoke-ChartUpdate
 
-        Should -Invoke Invoke-NativeProcess -ModuleName ChartUpdate -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 1 -ParameterFilter {
             $FilePath -eq 'git' -and $ArgumentList -contains 'commit' -and
             ($ArgumentList -join ' ') -match 'chart version 2\.0\.0 and image tag build-123'
         }
@@ -342,10 +342,10 @@ Describe 'Chart update transaction behavior' {
 
         Invoke-ChartUpdate
 
-        Should -Invoke Invoke-NativeProcess -ModuleName ChartUpdate -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 1 -ParameterFilter {
             $FilePath -eq 'helm' -and ($ArgumentList -join ' ') -like 'lint *'
         }
-        Should -Invoke Invoke-NativeProcess -ModuleName ChartUpdate -Times 0 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 0 -ParameterFilter {
             $FilePath -eq 'git' -and $ArgumentList -contains 'commit'
         }
         $script:pushCount | Should -Be 0
@@ -358,7 +358,7 @@ Describe 'Chart update transaction behavior' {
 
         { Invoke-ChartUpdate } | Should -Throw '*unexpected path: README.md*'
 
-        Should -Invoke Invoke-NativeProcess -ModuleName ChartUpdate -Times 0 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 0 -ParameterFilter {
             $FilePath -eq 'git' -and $ArgumentList -contains 'commit'
         }
     }
@@ -374,7 +374,7 @@ Describe 'Chart update transaction behavior' {
         Invoke-ChartUpdate
 
         $script:pushCount | Should -Be 2
-        Should -Invoke Invoke-NativeProcess -ModuleName ChartUpdate -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 1 -ParameterFilter {
             $FilePath -eq 'git' -and $ArgumentList -contains 'switch' -and $ArgumentList -contains $script:remote
         }
     }
@@ -414,7 +414,7 @@ Describe 'Chart update transaction behavior' {
         { Invoke-ChartUpdate } | Should -Throw '*second push failed*'
 
         $script:pushCount | Should -Be 2
-        Should -Invoke Invoke-NativeProcess -ModuleName ChartUpdate -Times 0 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 0 -ParameterFilter {
             $FilePath -eq 'git' -and $ArgumentList -contains '--force'
         }
     }
@@ -437,11 +437,20 @@ Describe 'Static-site update transaction behavior' {
         $env:INPUT_WRAPPER_CHART_PATH = $null
 
         $script:staticImage = 'old'
+        $script:staticInitialImage = $script:staticImage
         $script:staticAlias = 'staticSites'
         $script:staticChanged = @()
         $script:staticExtraChanged = @()
+        $script:staticBase = '4' * 40
+        $script:staticHead = $script:staticBase
+        $script:staticRemote = $script:staticBase
+        $script:staticRemoteChanged = @()
+        $script:staticAncestryExitCode = 0
+        $script:staticPushExitCodes = [Collections.Generic.Queue[int]]::new()
+        $script:staticPushExitCodes.Enqueue(0)
+        $script:staticPushCount = 0
 
-        Mock Invoke-NativeProcess -ModuleName StaticSiteUpdate {
+        Mock Invoke-NativeProcess -ModuleName GitOpsChartUpdate {
             if ($FilePath -eq 'yq') {
                 if ($ArgumentList[0] -eq '--version') {
                     return 'yq version v4.53.3'
@@ -458,6 +467,9 @@ Describe 'Static-site update transaction behavior' {
                 if ($expression -match '\| length') {
                     return '1'
                 }
+                if ($expression -match '\.name$') {
+                    return 'static-sites'
+                }
                 if ($expression -match '\.alias') {
                     return $script:staticAlias
                 }
@@ -472,9 +484,19 @@ Describe 'Static-site update transaction behavior' {
                 if ($ArgumentList -contains 'check-ref-format') {
                     return [pscustomobject]@{ ExitCode = 0; StandardOutput = ''; StandardError = '' }
                 }
+                if ($ArgumentList -contains 'status' -or $ArgumentList -contains 'config' -or $ArgumentList -contains 'add') {
+                    return ''
+                }
                 if ($ArgumentList -contains 'diff') {
-                    $paths = @($script:staticChanged) + @($script:staticExtraChanged)
-                    $text = if ($paths.Count) {
+                    $paths = if (
+                        $ArgumentList -contains $script:staticBase -and
+                        $ArgumentList -contains $script:staticRemote
+                    ) {
+                        $script:staticRemoteChanged
+                    } else {
+                        @($script:staticChanged) + @($script:staticExtraChanged)
+                    }
+                    $text = if (@($paths).Count) {
                         ($paths -join [char] 0) + [char] 0
                     } else {
                         ''
@@ -484,7 +506,47 @@ Describe 'Static-site update transaction behavior' {
                 if ($ArgumentList -contains 'ls-files') {
                     return [pscustomobject]@{ ExitCode = 0; StandardOutput = ''; StandardError = '' }
                 }
-                return ''
+                if ($ArgumentList -contains 'commit') {
+                    $script:staticHead = '5' * 40
+                    return ''
+                }
+                if ($ArgumentList -contains 'push') {
+                    $script:staticPushCount++
+                    $exitCode = if ($script:staticPushExitCodes.Count) {
+                        $script:staticPushExitCodes.Dequeue()
+                    } else {
+                        0
+                    }
+                    $allowFailureRequested = [bool] (
+                        Get-Variable -Name AllowFailure -ValueOnly -ErrorAction SilentlyContinue
+                    )
+                    if ($exitCode -and -not $allowFailureRequested) {
+                        throw 'second static push failed'
+                    }
+                    return [pscustomobject]@{ ExitCode = $exitCode; StandardOutput = ''; StandardError = '' }
+                }
+                if ($ArgumentList -contains 'fetch') {
+                    return ''
+                }
+                if ($ArgumentList -contains 'merge-base') {
+                    return [pscustomobject]@{
+                        ExitCode       = $script:staticAncestryExitCode
+                        StandardOutput = ''
+                        StandardError  = ''
+                    }
+                }
+                if ($ArgumentList -contains 'switch') {
+                    $script:staticHead = $script:staticRemote
+                    $script:staticImage = $script:staticInitialImage
+                    $script:staticChanged = @()
+                    return ''
+                }
+                if ($ArgumentList -contains 'rev-parse') {
+                    if ($ArgumentList -contains 'FETCH_HEAD') {
+                        return $script:staticRemote
+                    }
+                    return $script:staticHead
+                }
             }
 
             throw "Unexpected native process: $FilePath $($ArgumentList -join ' ')"
@@ -495,9 +557,10 @@ Describe 'Static-site update transaction behavior' {
         Invoke-StaticSiteUpdate
 
         $script:staticImage | Should -Be 'build-123'
-        Should -Invoke Invoke-NativeProcess -ModuleName StaticSiteUpdate -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 1 -ParameterFilter {
             $FilePath -eq 'git' -and $ArgumentList -contains 'push'
         }
+        $script:staticPushCount | Should -Be 1
     }
 
     It 'treats an already-current static-site image as success without mutation' {
@@ -505,7 +568,10 @@ Describe 'Static-site update transaction behavior' {
 
         { Invoke-StaticSiteUpdate } | Should -Not -Throw
 
-        Should -Invoke Invoke-NativeProcess -ModuleName StaticSiteUpdate -Times 0 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 1 -ParameterFilter {
+            $FilePath -eq 'helm' -and ($ArgumentList -join ' ') -like 'lint *'
+        }
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 0 -ParameterFilter {
             $FilePath -eq 'git' -and $ArgumentList -contains 'commit'
         }
     }
@@ -521,8 +587,61 @@ Describe 'Static-site update transaction behavior' {
 
         { Invoke-StaticSiteUpdate } | Should -Throw '*unexpected path: README.md*'
 
-        Should -Invoke Invoke-NativeProcess -ModuleName StaticSiteUpdate -Times 0 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 0 -ParameterFilter {
             $FilePath -eq 'git' -and $ArgumentList -contains 'commit'
+        }
+    }
+
+    It 'reapplies once after an unrelated concurrent static-site update' {
+        $script:staticPushExitCodes.Clear()
+        $script:staticPushExitCodes.Enqueue(1)
+        $script:staticPushExitCodes.Enqueue(0)
+        $script:staticRemote = '6' * 40
+        $script:staticRemoteChanged = @('unrelated.yaml')
+
+        Invoke-StaticSiteUpdate
+
+        $script:staticPushCount | Should -Be 2
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 1 -ParameterFilter {
+            $FilePath -eq 'git' -and $ArgumentList -contains 'switch' -and
+            $ArgumentList -contains $script:staticRemote
+        }
+    }
+
+    It 'fails closed when a concurrent update changes static-site values' {
+        $script:staticPushExitCodes.Clear()
+        $script:staticPushExitCodes.Enqueue(1)
+        $script:staticRemote = '6' * 40
+        $script:staticRemoteChanged = @('site/envs/prod/values.yaml')
+
+        { Invoke-StaticSiteUpdate } | Should -Throw '*concurrent update changed protected wrapper state*'
+
+        $script:staticPushCount | Should -Be 1
+    }
+
+    It 'fails closed when static-site history diverges' {
+        $script:staticPushExitCodes.Clear()
+        $script:staticPushExitCodes.Enqueue(1)
+        $script:staticRemote = '6' * 40
+        $script:staticAncestryExitCode = 1
+
+        { Invoke-StaticSiteUpdate } | Should -Throw '*no longer descends*'
+
+        $script:staticPushCount | Should -Be 1
+    }
+
+    It 'propagates a second static-site push failure without forcing' {
+        $script:staticPushExitCodes.Clear()
+        $script:staticPushExitCodes.Enqueue(1)
+        $script:staticPushExitCodes.Enqueue(1)
+        $script:staticRemote = '6' * 40
+        $script:staticRemoteChanged = @('unrelated.yaml')
+
+        { Invoke-StaticSiteUpdate } | Should -Throw '*second static push failed*'
+
+        $script:staticPushCount | Should -Be 2
+        Should -Invoke Invoke-NativeProcess -ModuleName GitOpsChartUpdate -Times 0 -ParameterFilter {
+            $FilePath -eq 'git' -and $ArgumentList -contains '--force'
         }
     }
 }
