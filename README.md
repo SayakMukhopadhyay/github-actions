@@ -186,6 +186,23 @@ Both inputs also accept Docker Buildx's newline-delimited form for multiple cach
 
 For publication, provide `username` and `password` (the password may be `github.token`). GHCR requires `packages: write`. The mandatory push-time check uses Docker's registry-neutral manifest inspection and treats only the standard OCI `MANIFEST_UNKNOWN` and `NAME_UNKNOWN` responses as absent; authentication, network, invalid-reference, and other probe failures fail the action. This is existence-based idempotence, not client-side immutability or race locking; registry policy remains authoritative.
 
+## `container-image-inspect`
+
+`SayakMukhopadhyay/github-actions/container-image-inspect@v1` performs a read-only lookup of exactly one normalized `registry/image-repository[/component]:version` reference. It never builds, pushes, promotes, or tags an image.
+
+```yaml
+- id: image
+  uses: SayakMukhopadhyay/github-actions/container-image-inspect@v1
+  with:
+    version: build-${{ github.sha }}
+    registry: ghcr.io
+    image-repository: ${{ github.repository }}
+    username: ${{ github.actor }}
+    password: ${{ github.token }}
+```
+
+Outputs are `image-reference`, `exists`, and `image-digest`. The digest is a validated `sha256` manifest digest when the exact reference exists and is empty when the registry reports the standard OCI `MANIFEST_UNKNOWN` or `NAME_UNKNOWN` result. Credentials are optional for anonymously readable registries, but `username` and `password` must be provided together. Authentication, transport, malformed manifest metadata, and all other unexpected probe failures fail closed.
+
 ## `container-promote`
 
 `SayakMukhopadhyay/github-actions/container-promote@v1` creates one target tag for an already-published image. It constructs `registry/image-repository[/component]@source-digest` and asks Docker Buildx to create `registry/image-repository[/component]:tag` directly from that registry digest. It does not pull or rebuild the image, inspect existing tags, enforce immutability, or verify the result after the registry command succeeds.
@@ -219,7 +236,6 @@ Registry authentication failures, rejected tag writes, and other Docker command 
   uses: SayakMukhopadhyay/github-actions/helm-package-push@v1
   with:
     development: 'true'
-    source-revision: ${{ github.sha }}
     app-version: build-${{ github.sha }}
     registry: ghcr.io
     repository: ${{ github.repository_owner }}/charts
@@ -228,7 +244,7 @@ Registry authentication failures, rejected tag writes, and other Docker command 
     password: ${{ github.token }}
 ```
 
-For development packages, `chart-version` is exactly `0.0.0-build-<full lowercase commit SHA>` and is independent of `charts/VERSION`. The optional `source-revision` controls that SHA and defaults to `github.sha`; stable packages continue to use `charts/VERSION`. For publication, provide `username` and `password`. The mandatory push-time exact-reference check uses Helm's registry-neutral OCI lookup and the same fail-closed standard OCI not-found classification as the container action. Outputs are `chart-name` and `chart-version`.
+For development packages, `chart-version` is exactly `0.0.0-build-<full lowercase commit SHA from github.sha>` and is independent of `charts/VERSION`. Stable packages continue to use `charts/VERSION`. For publication, provide `username` and `password`. The mandatory push-time exact-reference check uses Helm's registry-neutral OCI lookup and the same fail-closed standard OCI not-found classification as the container action. Outputs are `chart-name` and `chart-version`.
 
 ## `helm-deployment-state`
 

@@ -1,0 +1,68 @@
+name: Container Image Inspect
+description: Inspect one exact container image reference without mutating registry state
+inputs:
+  version:
+    description: Version tag of the container image
+    required: true
+  component:
+    description: Optional component appended to the image repository
+    required: false
+    default: ''
+  registry:
+    description: Container registry host
+    required: false
+    default: ghcr.io
+  image-repository:
+    description: Image repository below the registry; defaults to github.repository
+    required: false
+    default: ''
+  username:
+    description: Optional registry username; must be provided with password
+    required: false
+    default: ''
+  password:
+    description: Optional registry password or token; must be provided with username
+    required: false
+    default: ''
+outputs:
+  image-reference:
+    description: Normalized exact image reference inspected by the action
+    value: ${{ steps.prepare.outputs.image-reference }}
+  exists:
+    description: Whether the exact image reference exists in the registry
+    value: ${{ steps.inspect.outputs.exists }}
+  image-digest:
+    description: Validated sha256 manifest digest; empty when the exact reference is absent
+    value: ${{ steps.inspect.outputs.image-digest }}
+runs:
+  using: composite
+  steps:
+    - id: prepare
+      name: Prepare image inspection
+      shell: pwsh
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_COMPONENT: ${{ inputs.component }}
+        INPUT_REGISTRY: ${{ inputs.registry }}
+        INPUT_IMAGE_REPOSITORY: ${{ inputs.image-repository }}
+        INPUT_USERNAME: ${{ inputs.username }}
+        INPUT_PASSWORD: ${{ inputs.password }}
+        SOURCE_REPOSITORY: ${{ github.repository }}
+      run: '& "$env:ACTION_PATH/prepare-inspection.ps1"'
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+    - name: Log in to container registry
+      if: inputs.username != '' || inputs.password != ''
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+    - id: inspect
+      name: Inspect exact image reference
+      shell: pwsh
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        IMAGE_REFERENCE: ${{ steps.prepare.outputs.image-reference }}
+      run: '& "$env:ACTION_PATH/inspect-image.ps1"'

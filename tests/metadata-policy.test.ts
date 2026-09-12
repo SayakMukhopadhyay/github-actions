@@ -166,14 +166,60 @@ void test('container build metadata keeps one version tag, exact forwarding, and
   assert.match(String(probe?.run), /probe-image\.ps1/u);
 });
 
-void test('Helm package metadata requires exact-version publication checks while preserving source authority', () => {
+void test('container image inspection metadata is exact-reference and read-only', () => {
+  const metadata = readAction('container-image-inspect');
+
+  assert.deepEqual(Object.keys(metadata.inputs ?? {}).sort(), [
+    'component',
+    'image-repository',
+    'password',
+    'registry',
+    'username',
+    'version',
+  ]);
+  assert.equal(metadata.inputs?.version?.required, true);
+  assert.equal(metadata.inputs?.registry?.default, 'ghcr.io');
+  assert.equal(metadata.inputs?.['image-repository']?.default, '');
+  assert.deepEqual(Object.keys(metadata.outputs ?? {}).sort(), ['exists', 'image-digest', 'image-reference']);
+  assert.equal(metadata.outputs?.['image-reference']?.value, '${{ steps.prepare.outputs.image-reference }}');
+  assert.equal(metadata.outputs?.exists?.value, '${{ steps.inspect.outputs.exists }}');
+  assert.equal(metadata.outputs?.['image-digest']?.value, '${{ steps.inspect.outputs.image-digest }}');
+
+  const steps = metadata.runs?.steps ?? [];
+  assert.equal(
+    steps.some((step) => String(step.uses).startsWith('docker/build-push-action@')),
+    false,
+  );
+  assert.equal(
+    steps.some((step) => /build|push|promote|tag/u.test(String(step.run))),
+    false,
+  );
+
+  const buildx = steps.filter((step) => String(step.uses).startsWith('docker/setup-buildx-action@'));
+  assert.equal(buildx.length, 1);
+
+  const login = steps.find((step) => String(step.uses).startsWith('docker/login-action@'));
+  assert.equal(login?.if, "inputs.username != '' || inputs.password != ''");
+  assert.equal(login?.with?.registry, '${{ inputs.registry }}');
+  assert.equal(login?.with?.username, '${{ inputs.username }}');
+  assert.equal(login?.with?.password, '${{ inputs.password }}');
+
+  const inspect = steps.find((step) => step.id === 'inspect');
+  assert.equal(inspect?.env?.IMAGE_REFERENCE, '${{ steps.prepare.outputs.image-reference }}');
+  assert.match(String(inspect?.run), /inspect-image\.ps1/u);
+});
+
+void test('Helm package metadata keeps development source authority private', () => {
   const metadata = readAction('helm-package-push');
 
-  assert.equal(metadata.inputs?.['source-revision']?.required, false);
-  assert.equal(metadata.inputs?.['source-revision']?.default, '');
+  assert.equal('source-revision' in (metadata.inputs ?? {}), false);
 
   const preparation = (metadata.runs?.steps ?? []).find((step) => step.id === 'prepare');
-  assert.equal(preparation?.with?.['source-revision'], '${{ inputs.source-revision || github.sha }}');
+  assert.equal(preparation?.uses, '$/actions/helm-package-push');
+  assert.equal(preparation?.with?.['source-revision'], '${{ github.sha }}');
+
+  const internalPreparation = readAction('actions/helm-package-push');
+  assert.equal(internalPreparation.inputs?.['source-revision']?.required, true);
 });
 
 void test('container promotion metadata performs one direct digest-to-tag operation', () => {

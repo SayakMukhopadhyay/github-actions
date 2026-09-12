@@ -392,6 +392,55 @@
                 },
                 {
                   "if": {
+                    "properties": {
+                      "uses": { "const": "SayakMukhopadhyay/github-actions/container-image-inspect@v1" }
+                    },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "version": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Version tag of the container image"
+                          },
+                          "component": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional component appended to the image repository",
+                            "default": ""
+                          },
+                          "registry": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Container registry host",
+                            "default": "ghcr.io"
+                          },
+                          "image-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Image repository below the registry; defaults to github.repository",
+                            "default": ""
+                          },
+                          "username": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional registry username; must be provided with password",
+                            "default": ""
+                          },
+                          "password": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional registry password or token; must be provided with username",
+                            "default": ""
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["version"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
                     "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/container-promote@v1" } },
                     "required": ["uses"]
                   },
@@ -610,11 +659,6 @@
                             "type": ["string", "number", "boolean"],
                             "description": "Whether to create version 0.0.0-build-<full lowercase commit SHA>",
                             "default": "false"
-                          },
-                          "source-revision": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional full commit SHA used for development versions; defaults to github.sha",
-                            "default": ""
                           },
                           "username": {
                             "type": ["string", "number", "boolean"],

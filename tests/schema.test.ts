@@ -53,6 +53,7 @@ void test('accepts valid inputs for each documented consumer action', async () =
       },
     ],
     ['container-build-push', { version: 'build-abcdef' }],
+    ['container-image-inspect', { version: 'build-abcdef' }],
     [
       'container-promote',
       {
@@ -60,13 +61,7 @@ void test('accepts valid inputs for each documented consumer action', async () =
         tag: 'v1.2.3',
       },
     ],
-    [
-      'helm-package-push',
-      {
-        development: 'true',
-        'source-revision': 'abcdef1234567890abcdef1234567890abcdef12',
-      },
-    ],
+    ['helm-package-push', { development: 'true' }],
     [
       'helm-deployment-state',
       {
@@ -157,6 +152,17 @@ void test('rejects an unknown action input', async () => {
     await validateWorkflow(
       workflowFor('SayakMukhopadhyay/github-actions/check-version@v1', {
         unexpected: 'value',
+      }),
+    ),
+    false,
+  );
+});
+
+void test('rejects the private Helm package source revision input', async () => {
+  assert.equal(
+    await validateWorkflow(
+      workflowFor('SayakMukhopadhyay/github-actions/helm-package-push@v1', {
+        'source-revision': 'abcdef1234567890abcdef1234567890abcdef12',
       }),
     ),
     false,

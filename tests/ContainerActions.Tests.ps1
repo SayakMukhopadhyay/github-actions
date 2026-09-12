@@ -2,7 +2,9 @@
 
 BeforeAll {
     Import-Module (Join-Path $PSScriptRoot '..' 'container-build-push' 'ContainerBuild.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot '..' 'container-image-inspect' 'ContainerImageInspect.psm1') -Force
     Import-Module (Join-Path $PSScriptRoot '..' 'container-promote' 'ContainerPromotion.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ContainerImage.psm1') -Force
 }
 
 Describe 'Container action preparation' {
@@ -12,6 +14,8 @@ Describe 'Container action preparation' {
             'INPUT_COMPONENT'
             'INPUT_REGISTRY'
             'INPUT_IMAGE_REPOSITORY'
+            'INPUT_USERNAME'
+            'INPUT_PASSWORD'
             'SOURCE_REPOSITORY'
             'IMAGE_REFERENCE'
             'INPUT_SOURCE_DIGEST'
@@ -50,19 +54,40 @@ Describe 'Container action preparation' {
         { Initialize-ContainerBuild } | Should -Throw
     }
 
+    It 'constructs the same normalized reference for read-only inspection' {
+        $env:INPUT_VERSION = 'BUILD-ABCDEF'
+        $env:INPUT_COMPONENT = 'API'
+        $env:INPUT_REGISTRY = 'GHCR.IO'
+
+        Initialize-ContainerImageInspection
+
+        (Get-Content -Raw $env:GITHUB_OUTPUT) |
+            Should -Match 'image-reference=ghcr.io/owner/repository/api:BUILD-ABCDEF'
+    }
+
+    It 'requires optional inspection credentials as a pair' {
+        $env:INPUT_VERSION = '1.2.3'
+        $env:INPUT_USERNAME = 'user'
+
+        { Initialize-ContainerImageInspection } | Should -Throw '*provided together*'
+
+        $env:INPUT_PASSWORD = 'token'
+        { Initialize-ContainerImageInspection } | Should -Not -Throw
+    }
+
     It 'returns the existing manifest digest for an exact image reference' {
         $digest = 'sha256:' + ('a' * 64)
         $env:IMAGE_REFERENCE = 'ghcr.io/owner/repository:1.2.3'
-        Mock Invoke-OciArtifactProbe -ModuleName ContainerBuild {
+        Mock Invoke-OciArtifactProbe -ModuleName ContainerImage {
             [pscustomobject]@{
                 Exists         = $true
                 StandardOutput = "{`"digest`":`"$digest`"}"
             }
         }
 
-        Get-ContainerArtifactState
+        Write-ContainerImageState
 
-        Should -Invoke Invoke-OciArtifactProbe -ModuleName ContainerBuild -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-OciArtifactProbe -ModuleName ContainerImage -Times 1 -ParameterFilter {
             $FilePath -eq 'docker' -and
             ($ArgumentList -join ' ') -eq (
                 'buildx imagetools inspect --format {{json .Manifest}} ' + $env:IMAGE_REFERENCE
@@ -75,11 +100,11 @@ Describe 'Container action preparation' {
 
     It 'reports an exact image reference as absent without a digest' {
         $env:IMAGE_REFERENCE = 'ghcr.io/owner/repository:1.2.3'
-        Mock Invoke-OciArtifactProbe -ModuleName ContainerBuild {
+        Mock Invoke-OciArtifactProbe -ModuleName ContainerImage {
             [pscustomobject]@{ Exists = $false; StandardOutput = '' }
         }
 
-        Get-ContainerArtifactState
+        Write-ContainerImageState
 
         $output = Get-Content -Raw $env:GITHUB_OUTPUT
         $output | Should -Match 'exists=false'
@@ -88,11 +113,11 @@ Describe 'Container action preparation' {
 
     It 'rejects malformed manifest output from a successful image probe' {
         $env:IMAGE_REFERENCE = 'ghcr.io/owner/repository:1.2.3'
-        Mock Invoke-OciArtifactProbe -ModuleName ContainerBuild {
+        Mock Invoke-OciArtifactProbe -ModuleName ContainerImage {
             [pscustomobject]@{ Exists = $true; StandardOutput = '{"digest":"invalid"}' }
         }
 
-        { Get-ContainerArtifactState } | Should -Throw '*valid manifest digest*'
+        { Write-ContainerImageState } | Should -Throw '*valid manifest digest*'
     }
 
     It 'constructs digest and tag references for promotion' {

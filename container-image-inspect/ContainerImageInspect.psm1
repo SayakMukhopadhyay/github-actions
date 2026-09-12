@@ -5,7 +5,13 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ContainerImage.psm1') -Force
 
-function Initialize-ContainerBuild {
+function Initialize-ContainerImageInspection {
+    $usernameSupplied = -not [string]::IsNullOrEmpty($env:INPUT_USERNAME)
+    $passwordSupplied = -not [string]::IsNullOrEmpty($env:INPUT_PASSWORD)
+    if ($usernameSupplied -xor $passwordSupplied) {
+        throw 'Registry username and password must be provided together'
+    }
+
     $imageReference = Resolve-ContainerImageReference `
         -Version $env:INPUT_VERSION `
         -Component $env:INPUT_COMPONENT `
@@ -14,7 +20,6 @@ function Initialize-ContainerBuild {
         -SourceRepository $env:SOURCE_REPOSITORY
 
     Write-GitHubOutput 'image-reference' $imageReference
-    Write-GitHubOutput 'created' ([DateTimeOffset]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))
 }
 
-Export-ModuleMember -Function Initialize-ContainerBuild
+Export-ModuleMember -Function Initialize-ContainerImageInspection
