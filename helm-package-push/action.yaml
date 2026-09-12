@@ -5,34 +5,34 @@ inputs:
     description: Whether to create version 0.0.0-build-<full lowercase commit SHA>
     required: false
     default: 'false'
-  username:
-    description: Registry username
+  app-version:
+    description: Optional application version override passed to helm package
     required: false
     default: ''
-  password:
-    description: Registry password or token
+  registry:
+    description: OCI registry host
+    required: false
+    default: ghcr.io
+  repository:
+    description: Chart repository below the registry; defaults to github.repository_owner/charts
     required: false
     default: ''
   push:
-    description: Push the chart to the OCI registry
+    description: Whether to publish the packaged chart to the registry
     required: false
     default: 'true'
-  app-version:
-    description: Optional application version override passed to helm package
+  username:
+    description: Registry username; required with password when push is true, otherwise optional only as a complete pair
+    required: false
+    default: ''
+  password:
+    description: Registry password or token; required with username when push is true, otherwise optional only as a complete pair
     required: false
     default: ''
   working-directory:
     description: Working directory of the project
     required: false
     default: .
-  registry:
-    description: OCI registry host
-    required: false
-    default: ghcr.io
-  repository:
-    description: OCI repository below the registry; defaults to github.repository_owner/charts
-    required: false
-    default: ''
 outputs:
   chart-name:
     description: Name of the packaged chart

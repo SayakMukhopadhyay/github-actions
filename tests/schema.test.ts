@@ -59,6 +59,8 @@ void test('accepts valid inputs for each documented consumer action', async () =
       {
         'source-digest': 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         tag: 'v1.2.3',
+        username: '${{ github.actor }}',
+        password: '${{ secrets.GITHUB_TOKEN }}',
       },
     ],
     ['helm-package-push', { development: 'true' }],
@@ -182,6 +184,18 @@ void test('rejects a missing required bump-version increment', async () => {
     await validateWorkflow(
       workflowFor('SayakMukhopadhyay/github-actions/bump-version@v1', {
         token: '${{ secrets.GITHUB_TOKEN }}',
+      }),
+    ),
+    false,
+  );
+});
+
+void test('rejects missing required container promotion credentials', async () => {
+  assert.equal(
+    await validateWorkflow(
+      workflowFor('SayakMukhopadhyay/github-actions/container-promote@v1', {
+        'source-digest': 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        tag: 'v1.2.3',
       }),
     ),
     false,

@@ -197,16 +197,6 @@
                             "description": "Name or alias of the dependency to update; defaults to chart-name",
                             "default": ""
                           },
-                          "username": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional OCI registry username",
-                            "default": ""
-                          },
-                          "password": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional OCI registry password or token",
-                            "default": ""
-                          },
                           "target-repository": {
                             "type": ["string", "number", "boolean"],
                             "description": "GitHub owner/repository containing the wrapper chart",
@@ -224,7 +214,17 @@
                           },
                           "registry": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Optional OCI registry host to authenticate to before dependency update",
+                            "description": "Optional OCI registry host; credentials are required when provided",
+                            "default": ""
+                          },
+                          "username": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "OCI registry username; required with password when registry is provided and forbidden otherwise",
+                            "default": ""
+                          },
+                          "password": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "OCI registry password or token; required with username when registry is provided and forbidden otherwise",
                             "default": ""
                           }
                         },
@@ -319,7 +319,17 @@
                         "properties": {
                           "version": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Version of the container"
+                            "description": "Container image tag to build"
+                          },
+                          "registry": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "OCI registry host",
+                            "default": "ghcr.io"
+                          },
+                          "image-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Image repository below the registry; defaults to github.repository",
+                            "default": ""
                           },
                           "component": {
                             "type": ["string", "number", "boolean"],
@@ -328,28 +338,28 @@
                           },
                           "push": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Push the container to the registry",
+                            "description": "Whether to publish the built image to the registry",
                             "default": "true"
                           },
                           "username": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Registry username",
+                            "description": "Registry username; required with password when push is true, otherwise optional only as a complete pair",
                             "default": ""
                           },
                           "password": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Registry password or token",
-                            "default": ""
-                          },
-                          "auth-token": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional BuildKit secret named auth-token",
+                            "description": "Registry password or token; required with username when push is true, otherwise optional only as a complete pair",
                             "default": ""
                           },
                           "working-directory": {
                             "type": ["string", "number", "boolean"],
                             "description": "Docker build context relative to the checkout",
                             "default": "."
+                          },
+                          "auth-token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional BuildKit secret named auth-token",
+                            "default": ""
                           },
                           "build-contexts": {
                             "type": ["string", "number", "boolean"],
@@ -369,16 +379,6 @@
                           "cache-to": {
                             "type": ["string", "number", "boolean"],
                             "description": "Optional newline-delimited external cache destinations forwarded unchanged to Docker Buildx",
-                            "default": ""
-                          },
-                          "registry": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Container registry host",
-                            "default": "ghcr.io"
-                          },
-                          "image-repository": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Image repository below the registry; defaults to github.repository",
                             "default": ""
                           }
                         },
@@ -403,16 +403,11 @@
                         "properties": {
                           "version": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Version tag of the container image"
-                          },
-                          "component": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional component appended to the image repository",
-                            "default": ""
+                            "description": "Container image tag to inspect"
                           },
                           "registry": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Container registry host",
+                            "description": "OCI registry host",
                             "default": "ghcr.io"
                           },
                           "image-repository": {
@@ -420,14 +415,19 @@
                             "description": "Image repository below the registry; defaults to github.repository",
                             "default": ""
                           },
+                          "component": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional component appended to the image repository",
+                            "default": ""
+                          },
                           "username": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Optional registry username; must be provided with password",
+                            "description": "Optional registry username; must be provided together with password",
                             "default": ""
                           },
                           "password": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Optional registry password or token; must be provided with username",
+                            "description": "Optional registry password or token; must be provided together with username",
                             "default": ""
                           }
                         },
@@ -456,6 +456,16 @@
                             "type": ["string", "number", "boolean"],
                             "description": "Target container tag to create"
                           },
+                          "registry": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "OCI registry host",
+                            "default": "ghcr.io"
+                          },
+                          "image-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Image repository below the registry; defaults to github.repository",
+                            "default": ""
+                          },
                           "component": {
                             "type": ["string", "number", "boolean"],
                             "description": "Optional component appended to the image repository",
@@ -463,27 +473,15 @@
                           },
                           "username": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Registry username",
-                            "default": ""
+                            "description": "Registry username; required together with password"
                           },
                           "password": {
                             "type": ["string", "number", "boolean"],
-                            "description": "Registry password or token",
-                            "default": ""
-                          },
-                          "registry": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Container registry host",
-                            "default": "ghcr.io"
-                          },
-                          "image-repository": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Image repository below the registry; defaults to github.repository",
-                            "default": ""
+                            "description": "Registry password or token; required together with username"
                           }
                         },
                         "additionalProperties": false,
-                        "required": ["source-digest", "tag"]
+                        "required": ["source-digest", "tag", "username", "password"]
                       }
                     },
                     "required": ["with"]
@@ -609,30 +607,10 @@
                             "description": "Whether to create version 0.0.0-build-<full lowercase commit SHA>",
                             "default": "false"
                           },
-                          "username": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Registry username",
-                            "default": ""
-                          },
-                          "password": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Registry password or token",
-                            "default": ""
-                          },
-                          "push": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Push the chart to the OCI registry",
-                            "default": "true"
-                          },
                           "app-version": {
                             "type": ["string", "number", "boolean"],
                             "description": "Optional application version override passed to helm package",
                             "default": ""
-                          },
-                          "working-directory": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Working directory of the project",
-                            "default": "."
                           },
                           "registry": {
                             "type": ["string", "number", "boolean"],
@@ -641,8 +619,28 @@
                           },
                           "repository": {
                             "type": ["string", "number", "boolean"],
-                            "description": "OCI repository below the registry; defaults to github.repository_owner/charts",
+                            "description": "Chart repository below the registry; defaults to github.repository_owner/charts",
                             "default": ""
+                          },
+                          "push": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Whether to publish the packaged chart to the registry",
+                            "default": "true"
+                          },
+                          "username": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Registry username; required with password when push is true, otherwise optional only as a complete pair",
+                            "default": ""
+                          },
+                          "password": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Registry password or token; required with username when push is true, otherwise optional only as a complete pair",
+                            "default": ""
+                          },
+                          "working-directory": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Working directory of the project",
+                            "default": "."
                           }
                         },
                         "additionalProperties": false

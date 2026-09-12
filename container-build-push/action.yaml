@@ -2,32 +2,40 @@ name: Container Build Push
 description: Build a container and optionally push it to a caller-selected registry
 inputs:
   version:
-    description: Version of the container
+    description: Container image tag to build
     required: true
+  registry:
+    description: OCI registry host
+    required: false
+    default: ghcr.io
+  image-repository:
+    description: Image repository below the registry; defaults to github.repository
+    required: false
+    default: ''
   component:
     description: Optional component appended to the image repository
     required: false
     default: ''
   push:
-    description: Push the container to the registry
+    description: Whether to publish the built image to the registry
     required: false
     default: 'true'
   username:
-    description: Registry username
+    description: Registry username; required with password when push is true, otherwise optional only as a complete pair
     required: false
     default: ''
   password:
-    description: Registry password or token
-    required: false
-    default: ''
-  auth-token:
-    description: Optional BuildKit secret named auth-token
+    description: Registry password or token; required with username when push is true, otherwise optional only as a complete pair
     required: false
     default: ''
   working-directory:
     description: Docker build context relative to the checkout
     required: false
     default: .
+  auth-token:
+    description: Optional BuildKit secret named auth-token
+    required: false
+    default: ''
   build-contexts:
     description: Additional named Docker build contexts
     required: false
@@ -42,14 +50,6 @@ inputs:
     default: ''
   cache-to:
     description: Optional newline-delimited external cache destinations forwarded unchanged to Docker Buildx
-    required: false
-    default: ''
-  registry:
-    description: Container registry host
-    required: false
-    default: ghcr.io
-  image-repository:
-    description: Image repository below the registry; defaults to github.repository
     required: false
     default: ''
 outputs:

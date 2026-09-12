@@ -7,26 +7,24 @@ inputs:
   tag:
     description: Target container tag to create
     required: true
-  component:
-    description: Optional component appended to the image repository
-    required: false
-    default: ''
-  username:
-    description: Registry username
-    required: false
-    default: ''
-  password:
-    description: Registry password or token
-    required: false
-    default: ''
   registry:
-    description: Container registry host
+    description: OCI registry host
     required: false
     default: ghcr.io
   image-repository:
     description: Image repository below the registry; defaults to github.repository
     required: false
     default: ''
+  component:
+    description: Optional component appended to the image repository
+    required: false
+    default: ''
+  username:
+    description: Registry username; required together with password
+    required: true
+  password:
+    description: Registry password or token; required together with username
+    required: true
 runs:
   using: composite
   steps:

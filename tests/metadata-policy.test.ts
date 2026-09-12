@@ -356,6 +356,113 @@ void test('action families use shared coordinates, OCI probing, and GitOps trans
   }
 });
 
+void test('registry-aware action metadata uses consistent grouping and credential language', () => {
+  const expectedInputOrder: Record<string, string[]> = {
+    'container-build-push': [
+      'version',
+      'registry',
+      'image-repository',
+      'component',
+      'push',
+      'username',
+      'password',
+      'working-directory',
+      'auth-token',
+      'build-contexts',
+      'build-args',
+      'cache-from',
+      'cache-to',
+    ],
+    'container-image-inspect': ['version', 'registry', 'image-repository', 'component', 'username', 'password'],
+    'container-promote': ['source-digest', 'tag', 'registry', 'image-repository', 'component', 'username', 'password'],
+    'helm-package-push': [
+      'development',
+      'app-version',
+      'registry',
+      'repository',
+      'push',
+      'username',
+      'password',
+      'working-directory',
+    ],
+    'chart-update-deploy': [
+      'token',
+      'environment',
+      'chart-name',
+      'chart-version',
+      'image-tag',
+      'dependency',
+      'target-repository',
+      'target-ref',
+      'wrapper-chart-path',
+      'registry',
+      'username',
+      'password',
+    ],
+  };
+
+  for (const [actionName, inputOrder] of Object.entries(expectedInputOrder)) {
+    assert.deepEqual(Object.keys(readAction(actionName).inputs ?? {}), inputOrder, `${actionName} input grouping`);
+  }
+
+  const build = readAction('container-build-push');
+  const inspect = readAction('container-image-inspect');
+  const promote = readAction('container-promote');
+  const helm = readAction('helm-package-push');
+  const chart = readAction('chart-update-deploy');
+
+  for (const metadata of [build, inspect, promote]) {
+    assert.equal(metadata.inputs?.registry?.description, 'OCI registry host');
+    assert.equal(
+      metadata.inputs?.['image-repository']?.description,
+      'Image repository below the registry; defaults to github.repository',
+    );
+    assert.equal(metadata.inputs?.component?.description, 'Optional component appended to the image repository');
+  }
+
+  assert.equal(
+    build.inputs?.username?.description,
+    'Registry username; required with password when push is true, otherwise optional only as a complete pair',
+  );
+  assert.equal(
+    build.inputs?.password?.description,
+    'Registry password or token; required with username when push is true, otherwise optional only as a complete pair',
+  );
+  assert.equal(
+    inspect.inputs?.username?.description,
+    'Optional registry username; must be provided together with password',
+  );
+  assert.equal(
+    inspect.inputs?.password?.description,
+    'Optional registry password or token; must be provided together with username',
+  );
+  assert.equal(promote.inputs?.username?.description, 'Registry username; required together with password');
+  assert.equal(promote.inputs?.password?.description, 'Registry password or token; required together with username');
+  assert.equal(promote.inputs?.username?.required, true);
+  assert.equal(promote.inputs?.password?.required, true);
+
+  assert.equal(helm.inputs?.registry?.description, 'OCI registry host');
+  assert.equal(
+    helm.inputs?.repository?.description,
+    'Chart repository below the registry; defaults to github.repository_owner/charts',
+  );
+  assert.equal(helm.inputs?.username?.description, build.inputs?.username?.description);
+  assert.equal(helm.inputs?.password?.description, build.inputs?.password?.description);
+
+  assert.equal(
+    chart.inputs?.registry?.description,
+    'Optional OCI registry host; credentials are required when provided',
+  );
+  assert.equal(
+    chart.inputs?.username?.description,
+    'OCI registry username; required with password when registry is provided and forbidden otherwise',
+  );
+  assert.equal(
+    chart.inputs?.password?.description,
+    'OCI registry password or token; required with username when registry is provided and forbidden otherwise',
+  );
+});
+
 void test('Azure ACR token metadata keeps OIDC inputs, token outputs, and the immutable login pin explicit', () => {
   const metadata = readAction('azure-acr-token');
 

@@ -22,14 +22,6 @@ inputs:
     description: Name or alias of the dependency to update; defaults to chart-name
     required: false
     default: ''
-  username:
-    description: Optional OCI registry username
-    required: false
-    default: ''
-  password:
-    description: Optional OCI registry password or token
-    required: false
-    default: ''
   target-repository:
     description: GitHub owner/repository containing the wrapper chart
     required: false
@@ -43,7 +35,15 @@ inputs:
     required: false
     default: ''
   registry:
-    description: Optional OCI registry host to authenticate to before dependency update
+    description: Optional OCI registry host; credentials are required when provided
+    required: false
+    default: ''
+  username:
+    description: OCI registry username; required with password when registry is provided and forbidden otherwise
+    required: false
+    default: ''
+  password:
+    description: OCI registry password or token; required with username when registry is provided and forbidden otherwise
     required: false
     default: ''
 outputs:

@@ -2,26 +2,26 @@ name: Container Image Inspect
 description: Inspect one exact container image reference without mutating registry state
 inputs:
   version:
-    description: Version tag of the container image
+    description: Container image tag to inspect
     required: true
-  component:
-    description: Optional component appended to the image repository
-    required: false
-    default: ''
   registry:
-    description: Container registry host
+    description: OCI registry host
     required: false
     default: ghcr.io
   image-repository:
     description: Image repository below the registry; defaults to github.repository
     required: false
     default: ''
+  component:
+    description: Optional component appended to the image repository
+    required: false
+    default: ''
   username:
-    description: Optional registry username; must be provided with password
+    description: Optional registry username; must be provided together with password
     required: false
     default: ''
   password:
-    description: Optional registry password or token; must be provided with username
+    description: Optional registry password or token; must be provided together with username
     required: false
     default: ''
 outputs:
