@@ -1,7 +1,9 @@
 #requires -Version 7.4
 
 BeforeAll {
-    Import-Module (Join-Path $PSScriptRoot '..' 'create-release' 'CreateRelease.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot '..' 'create-release' 'ReleaseContext.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot '..' 'create-release' 'ReleasePublisher.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot '..' 'create-release' 'ReleaseSession.psm1') -Force
 }
 
 Describe 'Create-release Git context collection' {
@@ -278,7 +280,7 @@ Describe 'Create-release publication' {
 
         Remove-Item $env:GITHUB_OUTPUT -ErrorAction SilentlyContinue
 
-        Mock Invoke-NativeProcess -ModuleName CreateRelease {
+        Mock Invoke-NativeProcess -ModuleName ReleasePublisher {
             $endpoint = $ArgumentList[3]
 
             if ($endpoint -like '*/git/ref/tags/v1.0.0') {
@@ -345,7 +347,7 @@ Describe 'Create-release publication' {
         Invoke-PublishRelease
 
         (Get-Content -Raw $env:GITHUB_OUTPUT) | Should -Match 'release-id=17'
-        Should -Invoke Invoke-NativeProcess -ModuleName CreateRelease -Times 0 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName ReleasePublisher -Times 0 -ParameterFilter {
             $ArgumentList[2] -eq 'POST'
         }
     }
@@ -356,7 +358,7 @@ Describe 'Create-release publication' {
         Invoke-PublishRelease
 
         (Get-Content -Raw $env:GITHUB_OUTPUT) | Should -Match 'release-exists=false'
-        Should -Invoke Invoke-NativeProcess -ModuleName CreateRelease -Times 0 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName ReleasePublisher -Times 0 -ParameterFilter {
             $ArgumentList[2] -eq 'POST'
         }
     }
@@ -365,7 +367,7 @@ Describe 'Create-release publication' {
         Invoke-PublishRelease
 
         (Get-Content -Raw $env:GITHUB_OUTPUT) | Should -Match 'release-id=18'
-        Should -Invoke Invoke-NativeProcess -ModuleName CreateRelease -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName ReleasePublisher -Times 1 -ParameterFilter {
             $ArgumentList[2] -eq 'POST' -and $ArgumentList -contains '--input'
         }
     }
@@ -383,7 +385,7 @@ Describe 'Create-release publication' {
         $script:moved = $true
 
         { Invoke-PublishRelease } | Should -Throw '*remote tag moved*'
-        Should -Invoke Invoke-NativeProcess -ModuleName CreateRelease -Times 0 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName ReleasePublisher -Times 0 -ParameterFilter {
             $ArgumentList[2] -eq 'POST'
         }
     }
@@ -396,7 +398,7 @@ Describe 'Create-release publication' {
 
         Invoke-PublishRelease
 
-        Should -Invoke Invoke-NativeProcess -ModuleName CreateRelease -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName ReleasePublisher -ParameterFilter {
             $ArgumentList[3] -like '*/git/ref/tags/v0.9.0'
         }
     }
@@ -404,7 +406,7 @@ Describe 'Create-release publication' {
     It 'rejects malformed GitHub release responses' {
         $script:existing = $true
 
-        Mock Invoke-NativeProcess -ModuleName CreateRelease -ParameterFilter {
+        Mock Invoke-NativeProcess -ModuleName ReleasePublisher -ParameterFilter {
             $ArgumentList[3] -like '*/releases/tags/*'
         } {
             New-NativeResult 0 '{"id":0}'
@@ -417,7 +419,7 @@ Describe 'Create-release publication' {
         Set-Content $script:factsPath '{}'
 
         { Invoke-PublishRelease } | Should -Throw '*release facts are malformed*'
-        Should -Invoke Invoke-NativeProcess -ModuleName CreateRelease -Times 0
+        Should -Invoke Invoke-NativeProcess -ModuleName ReleasePublisher -Times 0
     }
 
     It 'removes only collector-owned session directories' {

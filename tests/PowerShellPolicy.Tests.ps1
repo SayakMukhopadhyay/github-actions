@@ -81,4 +81,20 @@ Describe 'PowerShell migration policy' {
         (Get-Content -Raw (Join-Path $root 'create-release/cleanup-release-session.ps1')) |
             Should -Match 'create-release cleanup:'
     }
+
+    It 'keeps create-release responsibilities in focused action-local modules' {
+        $root = Join-Path $PSScriptRoot '..'
+        $moduleByEntrypoint = [ordered]@{
+            'collect-git-context.ps1'     = 'ReleaseContext.psm1'
+            'publish-release.ps1'         = 'ReleasePublisher.psm1'
+            'cleanup-release-session.ps1' = 'ReleaseSession.psm1'
+        }
+
+        Test-Path (Join-Path $root 'create-release/CreateRelease.psm1') | Should -BeFalse
+        foreach ($entry in $moduleByEntrypoint.GetEnumerator()) {
+            $source = Get-Content -Raw (Join-Path $root "create-release/$($entry.Key)")
+
+            $source | Should -Match ([regex]::Escape($entry.Value))
+        }
+    }
 }
