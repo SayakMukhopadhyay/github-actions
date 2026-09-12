@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('Bootstrap', 'Format', 'FormatCheck', 'Lint', 'TypeCheck', 'Test', 'Generate', 'Bundle', 'Validate')]
+    [ValidateSet('Bootstrap', 'Format', 'FormatCheck', 'Lint', 'Test', 'Validate')]
     [string] $Task = 'Validate'
 )
 
@@ -25,16 +25,6 @@ function Invoke-Native {
     if ($LASTEXITCODE -ne 0) {
         throw "$File failed with exit code $LASTEXITCODE"
     }
-}
-
-function Invoke-NodeTool {
-    param([string] $Tool, [string[]] $Arguments)
-    $suffix = if ($IsWindows) {
-        '.cmd'
-    } else {
-        ''
-    }
-    Invoke-Native (Join-Path $root 'node_modules/.bin' "$Tool$suffix") $Arguments
 }
 
 function Save-Download {
@@ -72,7 +62,6 @@ function Bootstrap {
         ''
     }
 
-    Invoke-Native npm @('ci')
     New-Item -ItemType Directory -Force $modules, $bin | Out-Null
     Save-Module Pester -RequiredVersion 6.1.0 -Path $modules -Repository PSGallery -Force
     Save-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Path $modules -Repository PSGallery -Force
@@ -155,20 +144,12 @@ function Bootstrap {
     Invoke-Native helm @('version', '--short')
     Invoke-Native yq @('--version')
     Invoke-Native actionlint @('-version')
-    Write-Output 'Locked Node dependencies, PowerShell modules, and verified native tools are installed.'
+    Write-Output 'Pinned PowerShell modules and verified native tools are installed.'
 }
 
 function Get-PowerShellFiles {
     Get-ChildItem $root -Recurse -Include *.ps1, *.psm1, *.psd1 -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -notmatch '[\\/](node_modules|\.tools)[\\/]' }
-}
-
-function Get-PrettierTargets {
-    @(
-        '{check-version,validate-static-site,dispatch-pages-deployment,actions,tooling,tests}/**/*.{ts,mts,cts}'
-        '{schemas,.github}/**/*.{json,yaml,yml}'
-        '*.{json,md,mjs,yaml,yml}'
-    ) + @(Invoke-Native git @('ls-files', '*action.yaml'))
 }
 
 function Format-PowerShellSource {
@@ -191,7 +172,6 @@ function Format-PowerShellSource {
 }
 
 function Format {
-    Invoke-NodeTool prettier (@('--write') + (Get-PrettierTargets))
     Import-Module PSScriptAnalyzer -RequiredVersion 1.25.0
     foreach ($file in Get-PowerShellFiles) {
         $formatted = Format-PowerShellSource -Source (Get-Content -Raw $file.FullName)
@@ -200,7 +180,6 @@ function Format {
 }
 
 function FormatCheck {
-    Invoke-NodeTool prettier (@('--check') + (Get-PrettierTargets))
     Import-Module PSScriptAnalyzer -RequiredVersion 1.25.0
     foreach ($file in Get-PowerShellFiles) {
         $source = Get-Content -Raw $file.FullName
@@ -211,8 +190,6 @@ function FormatCheck {
 }
 
 function Lint {
-    $typescriptFiles = '{check-version,validate-static-site,dispatch-pages-deployment,actions,tooling,tests}/**/*.ts'
-    Invoke-NodeTool eslint @($typescriptFiles)
     Import-Module PSScriptAnalyzer -RequiredVersion 1.25.0
     $issues = @(Get-PowerShellFiles | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Severity Error })
     if ($issues.Count) {
@@ -220,71 +197,11 @@ function Lint {
     }
 }
 
-function TypeCheck {
-    Invoke-NodeTool tsc @('--noEmit')
-}
-
 function Test {
-    Invoke-Native node @('--test', 'tests/**/*.test.ts')
     Import-Module Pester -RequiredVersion 6.1.0
     $result = Invoke-Pester -Path (Join-Path $root 'tests') -PassThru
     if ($result.FailedCount) {
         throw "$($result.FailedCount) Pester tests failed"
-    }
-}
-
-function Generate {
-    Invoke-Native node @('tooling/generate-action-schema.ts')
-}
-
-function Bundle {
-    $bundles = @(
-        @{
-            Input  = 'check-version/check-version.ts'
-            Output = 'check-version/dist/index.mjs'
-        }
-        @{
-            Input  = 'actions/is-file-changed/is-file-changed.ts'
-            Output = 'actions/is-file-changed/dist/index.mjs'
-        }
-        @{
-            Input  = 'actions/bump-version/src/index.ts'
-            Output = 'actions/bump-version/dist/index.mjs'
-        }
-        @{
-            Input  = 'actions/helm-package-push/src/index.ts'
-            Output = 'actions/helm-package-push/dist/index.mjs'
-        }
-        @{
-            Input  = 'actions/argocd-verify-deployment/argocd-verify-deployment.ts'
-            Output = 'actions/argocd-verify-deployment/dist/index.mjs'
-        }
-        @{
-            Input  = 'actions/create-release/src/index.ts'
-            Output = 'actions/create-release/dist/index.mjs'
-        }
-        @{
-            Input  = 'validate-static-site/validate-static-site.ts'
-            Output = 'validate-static-site/dist/index.mjs'
-        }
-        @{
-            Input  = 'dispatch-pages-deployment/src/index.ts'
-            Output = 'dispatch-pages-deployment/dist/index.mjs'
-        }
-    )
-
-    foreach ($bundle in $bundles) {
-        Invoke-NodeTool rolldown @(
-            $bundle.Input
-            '--file'
-            $bundle.Output
-            '--format'
-            'esm'
-            '--platform'
-            'node'
-            '--sourcemap'
-            '--no-codeSplitting'
-        )
     }
 }
 
@@ -323,25 +240,7 @@ function Assert-NoBash {
 function Validate {
     FormatCheck
     Lint
-    TypeCheck
     Test
-    Generate
-    Invoke-Native git @('diff', '--exit-code', '--', 'schemas/action-inputs.schema.json')
-    Bundle
-    $bundleDirectories = @(
-        'check-version/dist'
-        'validate-static-site/dist'
-        'dispatch-pages-deployment/dist'
-        'actions/is-file-changed/dist'
-        'actions/bump-version/dist'
-        'actions/helm-package-push/dist'
-        'actions/argocd-verify-deployment/dist'
-        'actions/create-release/dist'
-    )
-    Invoke-Native git (@('diff', '--exit-code', '--') + $bundleDirectories)
-    foreach ($bundle in @(Invoke-Native git @('ls-files', '*/dist/index.mjs', '*/*/dist/index.mjs'))) {
-        Invoke-Native node @('--check', (Join-Path $root $bundle))
-    }
     Assert-NoBash
     Invoke-Native git @('diff', '--check')
     if (Get-Command actionlint -ErrorAction SilentlyContinue) {

@@ -9,9 +9,19 @@
     "npm": ">=11.0.0"
   },
   "scripts": {
-    "build": "pwsh -NoProfile -File ./build.ps1 Bundle",
-    "test": "pwsh -NoProfile -File ./build.ps1 Test",
-    "validate": "pwsh -NoProfile -File ./build.ps1 Validate"
+    "bootstrap": "npm ci && pwsh -NoProfile -File ./build.ps1 Bootstrap",
+    "build": "rolldown --config rolldown.config.ts",
+    "check:bundles": "tsc --project tsconfig.bundles.json",
+    "format": "prettier --write \"{check-version,validate-static-site,dispatch-pages-deployment,actions,tooling,tests}/**/*.{ts,mts,cts}\" \"{schemas,.github}/**/*.{json,yaml,yml}\" \"*.{json,md,mjs,ts,yaml,yml}\" \"*/action.yaml\" \"actions/*/action.yaml\"",
+    "format:check": "prettier --check \"{check-version,validate-static-site,dispatch-pages-deployment,actions,tooling,tests}/**/*.{ts,mts,cts}\" \"{schemas,.github}/**/*.{json,yaml,yml}\" \"*.{json,md,mjs,ts,yaml,yml}\" \"*/action.yaml\" \"actions/*/action.yaml\"",
+    "generate": "node tooling/generate-action-schema.ts",
+    "lint": "eslint \"{check-version,validate-static-site,dispatch-pages-deployment,actions,tooling,tests}/**/*.ts\" \"rolldown.config.ts\"",
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "validate": "npm run validate:node && npm run validate:powershell",
+    "validate:generated": "npm run generate && git diff --exit-code -- schemas/action-inputs.schema.json && npm run build && git diff --exit-code -- \":(glob)**/dist/**\" && npm run check:bundles",
+    "validate:node": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run validate:generated",
+    "validate:powershell": "pwsh -NoProfile -File ./build.ps1 Validate"
   },
   "dependencies": {
     "@actions/core": "3.0.1",

@@ -445,25 +445,31 @@ The repository is one npm package and does not use workspaces. JavaScript action
 
 `powershell/ActionRuntime.psm1` is intentionally narrow: native process execution, GitHub workflow protocol helpers, single-line validation, and contained temporary cleanup. `ContainerImage.psm1` owns normalized image names plus tag and digest references, `RegistryCredentials.psm1` owns the shared credential policy, `OciArtifactProbe.psm1` owns fail-closed artifact existence classification, and `GitOpsChartUpdate.psm1` owns the chart mutation, lint, commit, and safe retry transaction. Action-local modules remain thin adapters where family-specific inputs or messages differ.
 
-Install the exact locked dependencies, pinned PowerShell modules, and verified native tools with Node `24.20.0` and PowerShell 7.4 or newer:
+Install the exact locked Node dependencies, pinned PowerShell modules, and verified native tools with Node `24.20.0` and PowerShell 7.4 or newer:
 
 ```powershell
-./build.ps1 Bootstrap
+npm run bootstrap
 ```
 
-The main development checks are:
+Node.js development tasks are owned by npm:
 
 ```powershell
-./build.ps1 FormatCheck
-./build.ps1 Lint
-./build.ps1 TypeCheck
-./build.ps1 Test
-./build.ps1 Generate
-./build.ps1 Bundle
-./build.ps1 Validate
+npm run format:check
+npm run lint
+npm run typecheck
+npm test
+npm run generate
+npm run build
+npm run validate:node
 ```
 
-`build.ps1` is the canonical development interface. Bootstrap is explicit; validation never silently downloads dependencies or tools.
+`build.ps1` owns only PowerShell and native-tool work. Its `Format`, `FormatCheck`, `Lint`, `Test`, and `Validate` tasks cover PowerShell formatting, PSScriptAnalyzer, Pester, repository shell policy, actionlint, and Git whitespace checks. Run the complete repository validation through npm:
+
+```powershell
+npm run validate
+```
+
+Bootstrap remains explicit; validation never silently downloads dependencies or tools.
 
 TypeScript in this repository—production actions, tooling, and tests—must never spawn an external process. It may parse files and use JavaScript facilities such as the `RegExp` constructor. Git, Helm, `yq`, and GitHub CLI transactions belong in checked PowerShell modules or composite steps. Pester tests invoke those command boundaries directly and use real temporary Git repositories where transaction behavior matters.
 
@@ -474,18 +480,18 @@ Node and Pester tests are hermetic and credential-free. They use temporary repos
 TypeScript sources, public and implementation metadata, ESM bundles, external source maps, generated schemas, package metadata, and the npm lockfile are committed together. After changing source or metadata, regenerate the affected artifacts and inspect the exact diff:
 
 ```powershell
-./build.ps1 Generate
-./build.ps1 Bundle
+npm run generate
+npm run build
 git diff --check
 ```
 
-CI repeats both generators and rejects any byte-level drift. Fixed output names and LF normalization keep the committed artifacts reproducible across Windows development and Ubuntu CI. Do not submit source-only changes expecting a later release build to update `dist`.
+CI repeats schema generation and bundling through npm and rejects any byte-level drift. Fixed output names and LF normalization keep the committed artifacts reproducible across Windows development and Ubuntu CI. Do not submit source-only changes expecting a later release build to update `dist`.
 
 Licensed dependency metadata lives under `.licenses/npm` and is governed by `.licensed.yml`. When npm dependencies change, run `licensed cache` with Licensed `5.1.0`, review the generated records, and commit them with the lockfile. CI runs `licensed status`; it never updates or commits the cache.
 
 ## CI and v1 promotion
 
-Windows and Ubuntu CI run TypeScript, ESLint, Prettier, PSScriptAnalyzer, Node tests, Pester, typechecking, and bundling. Ubuntu remains authoritative for generated-artifact drift, actionlint, offline Zizmor, Licensed, security policy, and credential-free action fixtures. External actions use reviewed full commit SHAs. Dependabot opens weekly npm and GitHub Actions pull requests; updates are never automerged.
+Windows and Ubuntu CI run the complete npm and PowerShell validation suites, including TypeScript, ESLint, Prettier, PSScriptAnalyzer, Node tests, Pester, typechecking, schema generation, bundling, generated-artifact drift checks, and actionlint. Ubuntu also runs offline Zizmor, Licensed, security policy, and credential-free action fixtures. External actions use reviewed full commit SHAs. Dependabot opens weekly npm and GitHub Actions pull requests; updates are never automerged.
 
 Source changes do not move `v1`. To promote or intentionally roll back, manually run the **Promote v1** workflow with a full 40-character commit SHA from `main`. It verifies that exact commit is reachable from `main`, then moves the lightweight `v1` tag with force-with-lease protection. The promotion job alone receives `contents: write`; no semver tag or GitHub Release is created for this action repository.
 

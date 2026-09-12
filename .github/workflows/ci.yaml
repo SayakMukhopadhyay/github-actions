@@ -39,26 +39,15 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Bootstrap locked dependencies
+      - name: Bootstrap locked dependencies and tools
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: ./build.ps1 Bootstrap
-
-      - name: Validate source and tests on Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          ./build.ps1 FormatCheck
-          ./build.ps1 Lint
-          ./build.ps1 TypeCheck
-          ./build.ps1 Test
-          ./build.ps1 Bundle
+        run: npm run bootstrap
 
       - name: Validate source, tests, policies, and generated artifacts
-        if: runner.os == 'Linux'
         shell: pwsh
-        run: ./build.ps1 Validate
+        run: npm run validate
 
       - name: Require a clean validated tree
         shell: pwsh
