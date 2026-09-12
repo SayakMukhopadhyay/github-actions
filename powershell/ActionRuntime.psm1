@@ -151,7 +151,8 @@ function Write-GitHubAnnotation {
         [string] $Message
     )
 
-    Write-Output "::$Level::$($Message.Replace("`r", '%0D').Replace("`n", '%0A'))"
+    $escapedMessage = $Message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+    Write-Output "::$Level::$escapedMessage"
 }
 
 function Remove-ContainedTemporaryResource {

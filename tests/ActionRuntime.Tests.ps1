@@ -69,11 +69,11 @@ Describe 'ActionRuntime' {
         $text | Should -Match 'multi<<gho_'
     }
 
-    It 'escapes annotation newlines and emits masks without returning secrets to callers' {
-        $annotation = Write-GitHubAnnotation warning "one`ntwo"
+    It 'escapes annotation percent signs and newlines before emitting masks' {
+        $annotation = Write-GitHubAnnotation warning "100%`rX`ntwo"
         $mask = Add-GitHubMask 'secret'
 
-        $annotation | Should -Be '::warning::one%0Atwo'
+        $annotation | Should -Be '::warning::100%25%0DX%0Atwo'
         $mask | Should -Be '::add-mask::secret'
     }
 

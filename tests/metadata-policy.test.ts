@@ -325,6 +325,37 @@ void test('registry credential policy is wired before every registry login', () 
   assert.doesNotMatch(promotionModule, /registryPattern|pathPattern/u);
 });
 
+void test('action families use shared coordinates, OCI probing, and GitOps transactions', () => {
+  for (const actionName of ['container-build-push', 'container-image-inspect', 'container-promote']) {
+    const metadata = readAction(actionName);
+
+    assert.equal(metadata.inputs?.component?.default, '', `${actionName} component default`);
+    assert.equal(metadata.inputs?.registry?.default, 'ghcr.io', `${actionName} registry default`);
+    assert.equal(metadata.inputs?.['image-repository']?.default, '', `${actionName} repository default`);
+  }
+
+  const containerImage = readFileSync(path.join(root, 'powershell', 'ContainerImage.psm1'), 'utf8');
+  assert.match(containerImage, /function Resolve-ContainerImageName/u);
+  assert.match(containerImage, /function New-ContainerTagReference/u);
+  assert.match(containerImage, /function New-ContainerDigestReference/u);
+  assert.match(containerImage, /Invoke-OciArtifactProbe docker/u);
+
+  const helmTransaction = readFileSync(path.join(root, 'helm-package-push', 'HelmTransaction.psm1'), 'utf8');
+  assert.match(helmTransaction, /Import-Module.+OciArtifactProbe\.psm1/u);
+  assert.match(helmTransaction, /Invoke-OciArtifactProbe helm/u);
+
+  for (const adapter of [
+    path.join(root, 'chart-update-deploy', 'ChartUpdate.psm1'),
+    path.join(root, 'static-site-update-deploy', 'StaticSiteUpdate.psm1'),
+  ]) {
+    const source = readFileSync(adapter, 'utf8');
+
+    assert.match(source, /Import-Module.+GitOpsChartUpdate\.psm1/u);
+    assert.match(source, /Invoke-GitOpsChartUpdate/u);
+    assert.doesNotMatch(source, /function Assert-ContainedPath|function Invoke-WrapperMutation/u);
+  }
+});
+
 void test('Azure ACR token metadata keeps OIDC inputs, token outputs, and the immutable login pin explicit', () => {
   const metadata = readAction('azure-acr-token');
 

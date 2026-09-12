@@ -39,4 +39,46 @@ Describe 'PowerShell migration policy' {
             (Get-Content $path -First 1) | Should -Be '#requires -Version 7.4'
         }
     }
+
+    It 'standardizes every action-invoked PowerShell entrypoint' {
+        $root = Join-Path $PSScriptRoot '..'
+        $entrypoints = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        $actionFiles = @(& git -C $root ls-files '*/action.yaml' '*/*/action.yaml') |
+            ForEach-Object { Get-Item (Join-Path $root $_) }
+
+        foreach ($actionFile in $actionFiles) {
+            $source = Get-Content -Raw $actionFile.FullName
+            $matches = [regex]::Matches(
+                $source,
+                '\$env:(?:ACTION_PATH|GITHUB_ACTION_PATH)/(?<path>[^"'']+\.ps1)'
+            )
+            foreach ($match in $matches) {
+                $path = [IO.Path]::GetFullPath((Join-Path $actionFile.Directory.FullName $match.Groups['path'].Value))
+                [void] $entrypoints.Add($path)
+            }
+        }
+
+        $entrypoints.Count | Should -BeGreaterThan 0
+        foreach ($entrypoint in $entrypoints) {
+            $source = Get-Content -Raw $entrypoint
+
+            (Get-Content $entrypoint -First 1) | Should -Be '#requires -Version 7.4'
+            $source | Should -Match 'Import-Module.+ActionRuntime\.psm1'
+            $source | Should -Match 'try\s*\{'
+            $source | Should -Match 'catch\s*\{'
+            $source | Should -Match 'Write-GitHubAnnotation\s+-Message'
+            $source | Should -Match 'exit 1'
+            $source | Should -Not -Match '::error::'
+        }
+    }
+
+    It 'retains sanitized create-release diagnostic categories' {
+        $root = Join-Path $PSScriptRoot '..'
+        (Get-Content -Raw (Join-Path $root 'create-release/collect-git-context.ps1')) |
+            Should -Match 'create-release:'
+        (Get-Content -Raw (Join-Path $root 'create-release/publish-release.ps1')) |
+            Should -Match 'create-release:'
+        (Get-Content -Raw (Join-Path $root 'create-release/cleanup-release-session.ps1')) |
+            Should -Match 'create-release cleanup:'
+    }
 }
