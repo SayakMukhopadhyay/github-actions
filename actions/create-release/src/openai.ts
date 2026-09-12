@@ -1,5 +1,12 @@
+import * as core from '@actions/core';
 import OpenAI from 'openai';
-import type { ClientFactory, GeneratedNotes } from './contracts.ts';
+import type {
+  GeneratedNotes,
+  OpenAIDependencies,
+  ResponseClient,
+  WorkloadIdentityClientOptions,
+  WorkloadIdentityInputs,
+} from './contracts.ts';
 import { validateGeneratedNotes } from './validation.ts';
 
 const MODEL = 'gpt-5.6-luna';
@@ -71,17 +78,33 @@ function extractOutputText(response: unknown): string {
 
 export async function generateNotes(
   context: string,
-  apiKey: string,
-  clientFactory: ClientFactory = (key) => {
-    const client = new OpenAI({ apiKey: key });
-    return {
-      responses: {
-        create: (request) => client.responses.create(request as Parameters<typeof client.responses.create>[0]),
-      },
-    };
-  },
+  identity: WorkloadIdentityInputs,
+  dependencies: OpenAIDependencies = {},
 ): Promise<GeneratedNotes> {
-  const response = await clientFactory(apiKey).responses.create({
+  const getIDToken = dependencies.getIDToken ?? ((audience: string) => core.getIDToken(audience));
+  const clientFactory =
+    dependencies.clientFactory ??
+    ((options: WorkloadIdentityClientOptions): ResponseClient => {
+      const client = new OpenAI(options);
+      return {
+        responses: {
+          create: (request) => client.responses.create(request as Parameters<typeof client.responses.create>[0]),
+        },
+      };
+    });
+  const client = clientFactory({
+    apiKey: null,
+    workloadIdentity: {
+      identityProviderId: identity.identityProviderId,
+      serviceAccountId: identity.serviceAccountId,
+      provider: {
+        tokenType: 'jwt',
+        getToken: () => getIDToken(identity.audience),
+      },
+    },
+  });
+
+  const response = await client.responses.create({
     model: MODEL,
     store: false,
     tools: [],

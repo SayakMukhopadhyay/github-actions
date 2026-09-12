@@ -123,7 +123,9 @@ void test('accepts valid inputs for each documented consumer action', async () =
         token: '${{ secrets.GITHUB_TOKEN }}',
         'tag-name': 'v1.2.3',
         'release-name': 'v1.2.3',
-        'openai-api-key': '${{ secrets.OPENAI_API_KEY }}',
+        'openai-wif-audience': '${{ vars.OPENAI_WIF_AUDIENCE }}',
+        'openai-identity-provider-id': '${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}',
+        'openai-service-account-id': '${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}',
         pathspecs: ':(top,glob)**\n:(top,glob,exclude)charts/**',
       },
     ],
@@ -195,6 +197,20 @@ void test('rejects the private Helm package source revision input', async () => 
 
 void test('rejects a missing caller-required action input', async () => {
   assert.equal(await validateWorkflow(workflowFor('SayakMukhopadhyay/github-actions/is-file-changed@v1')), false);
+});
+
+void test('rejects the removed create-release API key contract', async () => {
+  assert.equal(
+    await validateWorkflow(
+      workflowFor('SayakMukhopadhyay/github-actions/create-release@v1', {
+        token: '${{ secrets.GITHUB_TOKEN }}',
+        'tag-name': 'v1.2.3',
+        'release-name': 'v1.2.3',
+        'openai-api-key': '${{ secrets.OPENAI_API_KEY }}',
+      }),
+    ),
+    false,
+  );
 });
 
 void test('rejects missing required Argo CD deployment verification inputs', async () => {

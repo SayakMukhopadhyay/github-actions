@@ -374,11 +374,12 @@ The checkout and remote Git operations receive `token` without persisting creden
 
 ## `create-release`
 
-`SayakMukhopadhyay/github-actions/create-release@v1` combines explicit PowerShell boundaries for local Git context and GitHub publication with a bundled TypeScript release-note generator. The action targets the current `github.repository` and has exactly four required inputs: `token`, `tag-name`, `release-name`, and `openai-api-key`.
+`SayakMukhopadhyay/github-actions/create-release@v1` combines explicit PowerShell boundaries for local Git context and GitHub publication with a bundled TypeScript release-note generator. The action targets the current `github.repository` and has exactly six required inputs: `token`, `tag-name`, `release-name`, `openai-wif-audience`, `openai-identity-provider-id`, and `openai-service-account-id`.
 
 ```yaml
 permissions:
   contents: write
+  id-token: write
 
 steps:
   - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -391,8 +392,12 @@ steps:
       token: ${{ github.token }}
       tag-name: ${{ needs.version.outputs.tag-name }}
       release-name: Release ${{ needs.version.outputs.tag-name }}
-      openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+      openai-wif-audience: ${{ vars.OPENAI_WIF_AUDIENCE }}
+      openai-identity-provider-id: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
+      openai-service-account-id: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
 ```
+
+The consuming job must grant `id-token: write`. The generator requests a GitHub OIDC JWT for the exact configured audience and exchanges it through the OpenAI SDK for a short-lived OpenAI access token, following the [official OpenAI GitHub Actions workload identity federation guide](https://developers.openai.com/api/docs/guides/workload-identity-federation/github-actions). The three OpenAI WIF inputs are identifiers and can be supplied through GitHub Actions variables; no long-lived OpenAI API key is accepted or read.
 
 The supplied tag must already exist in the current GitHub repository. The pinned checkout receives the GitHub token long enough to obtain complete local history without persisting credentials. The secret-free collector then derives release facts from that checkout. The action never creates, moves, or overwrites a tag, and its publisher re-verifies the remote tag immediately before creating a published, non-draft, non-prerelease Release. A retry returns an existing matching Release unchanged, including races where another run creates it first.
 
@@ -421,7 +426,7 @@ The action sends bounded selected commit subjects, scoped per-commit changed-fil
 
 Outputs are `release-id`, `html-url`, and `upload-url`, corresponding to the useful ID, HTML URL, and upload URL values exposed by the legacy action.
 
-The checkout sees only the GitHub token. The collector receives no secrets. The generator receives only the OpenAI key and secret-free context. The publisher receives only the GitHub token and the locally validated release body. No process receives both credentials.
+The checkout sees only the GitHub token. The collector receives no credentials. The generator receives the WIF identifiers and secret-free context, requests the GitHub OIDC subject token only when the OpenAI SDK needs it, and explicitly disables ambient API-key authentication. The publisher receives only the GitHub token and the locally validated release body. No process receives both the GitHub API token and the GitHub OIDC subject token.
 
 The caller retains events, jobs, `needs`, conditions, permissions, environments, concurrency, publication ordering, approval gates, and the decision to run application and chart releases independently. This action owns only tag verification, family/range derivation, bounded note generation, deterministic Markdown composition, idempotency, and Release creation.
 

@@ -12,6 +12,7 @@ import {
   validateReleaseFacts,
   type ReleaseFacts,
   type ResponseClient,
+  type WorkloadIdentityClientOptions,
 } from '../actions/create-release/src/index.ts';
 
 const facts: ReleaseFacts = {
@@ -47,7 +48,14 @@ function completedResponse(text: string): unknown {
   };
 }
 
-const releaseInputNames = ['openai-api-key', 'context-file', 'facts-file', 'body-file'] as const;
+const releaseInputNames = [
+  'openai-wif-audience',
+  'openai-identity-provider-id',
+  'openai-service-account-id',
+  'context-file',
+  'facts-file',
+  'body-file',
+] as const;
 type ReleaseInputName = (typeof releaseInputNames)[number];
 
 interface RunOptions {
@@ -65,7 +73,7 @@ interface RunResult {
   body: string | undefined;
   clientCreated: boolean;
   exitCode: number | string | null | undefined;
-  observedKey: string;
+  observedOptions: WorkloadIdentityClientOptions | undefined;
   runnerTemp: string;
   stderr: string;
 }
@@ -86,7 +94,7 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
   const originalStderrWrite = process.stderr.write.bind(process.stderr);
 
   let clientCreated = false;
-  let observedKey = '';
+  let observedOptions: WorkloadIdentityClientOptions | undefined;
   let stderr = '';
 
   try {
@@ -102,7 +110,9 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
     }
 
     const inputValues: Record<ReleaseInputName, string> = {
-      'openai-api-key': 'openai-secret-value',
+      'openai-wif-audience': 'openai-audience-value',
+      'openai-identity-provider-id': 'openai-provider-value',
+      'openai-service-account-id': 'openai-service-account-value',
       'context-file': options.contextInput ?? contextPath,
       'facts-file': options.factsInput ?? factsPath,
       'body-file': options.bodyInput ?? bodyPath,
@@ -124,33 +134,35 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
       return true;
     };
 
-    await run((apiKey) => {
-      clientCreated = true;
-      observedKey = apiKey;
-      return {
-        responses: {
-          create: () => {
-            if (options.modelError) {
-              return Promise.reject(options.modelError);
-            }
-            return Promise.resolve(
-              completedResponse(
-                JSON.stringify({
-                  description: 'This release improves delivery reliability.',
-                  highlights: ['Handles important release paths safely'],
-                }),
-              ),
-            );
+    await run({
+      clientFactory: (clientOptions) => {
+        clientCreated = true;
+        observedOptions = clientOptions;
+        return {
+          responses: {
+            create: () => {
+              if (options.modelError) {
+                return Promise.reject(options.modelError);
+              }
+              return Promise.resolve(
+                completedResponse(
+                  JSON.stringify({
+                    description: 'This release improves delivery reliability.',
+                    highlights: ['Handles important release paths safely'],
+                  }),
+                ),
+              );
+            },
           },
-        },
-      };
+        };
+      },
     });
 
     return {
       body: process.exitCode === undefined ? await readFile(bodyPath, 'utf8') : undefined,
       clientCreated,
       exitCode: process.exitCode,
-      observedKey,
+      observedOptions,
       runnerTemp,
       stderr,
     };
@@ -171,35 +183,56 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
 }
 
 function assertRedacted(result: RunResult): void {
-  assert.doesNotMatch(result.stderr, /openai-secret-value|untrusted|release-session|diagnostics-/u);
+  assert.doesNotMatch(
+    result.stderr,
+    /openai-(?:audience|provider|service-account)-value|untrusted|release-session|diagnostics-/u,
+  );
   assert.ok(!result.stderr.includes(result.runnerTemp));
 }
 
 void test('the OpenAI request is fixed, stateless, tool-free, bounded, and schema constrained', async () => {
-  let observedKey = '';
+  let observedAudience = '';
+  let observedOptions: WorkloadIdentityClientOptions | undefined;
   let observedRequest: Record<string, unknown> | undefined;
-  const clientFactory = (apiKey: string): ResponseClient => {
-    observedKey = apiKey;
+  const clientFactory = (options: WorkloadIdentityClientOptions): ResponseClient => {
+    observedOptions = options;
     return {
       responses: {
-        create: (request) => {
+        create: async (request) => {
           observedRequest = request as Record<string, unknown>;
-          return Promise.resolve(
-            completedResponse(
-              JSON.stringify({
-                description: 'This release improves delivery reliability.',
-                highlights: ['Handles important release paths more safely'],
-              }),
-            ),
+          assert.equal(await options.workloadIdentity.provider.getToken(), 'github-oidc-token');
+          return completedResponse(
+            JSON.stringify({
+              description: 'This release improves delivery reliability.',
+              highlights: ['Handles important release paths more safely'],
+            }),
           );
         },
       },
     };
   };
 
-  const notes = await generateNotes('bounded untrusted context', 'openai-secret', clientFactory);
+  const notes = await generateNotes(
+    'bounded untrusted context',
+    {
+      audience: 'https://api.openai.com/v1',
+      identityProviderId: 'idp-123',
+      serviceAccountId: 'sa-456',
+    },
+    {
+      clientFactory,
+      getIDToken: (audience) => {
+        observedAudience = audience;
+        return Promise.resolve('github-oidc-token');
+      },
+    },
+  );
 
-  assert.equal(observedKey, 'openai-secret');
+  assert.equal(observedOptions?.apiKey, null);
+  assert.equal(observedOptions?.workloadIdentity.identityProviderId, 'idp-123');
+  assert.equal(observedOptions?.workloadIdentity.serviceAccountId, 'sa-456');
+  assert.equal(observedOptions?.workloadIdentity.provider.tokenType, 'jwt');
+  assert.equal(observedAudience, 'https://api.openai.com/v1');
   assert.deepEqual(notes.highlights, ['Handles important release paths more safely']);
   assert.equal(observedRequest?.model, 'gpt-5.6-luna');
   assert.equal(observedRequest?.store, false);
@@ -266,9 +299,17 @@ void test('malformed, refused, incomplete, and unsafe model responses fail close
 
   for (const response of responses) {
     await assert.rejects(
-      generateNotes('context', 'secret', () => ({
-        responses: { create: () => Promise.resolve(response) },
-      })),
+      generateNotes(
+        'context',
+        {
+          audience: 'https://api.openai.com/v1',
+          identityProviderId: 'idp-123',
+          serviceAccountId: 'sa-456',
+        },
+        {
+          clientFactory: () => ({ responses: { create: () => Promise.resolve(response) } }),
+        },
+      ),
     );
   }
 });

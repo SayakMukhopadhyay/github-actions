@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import {
   fail,
   SafeActionFailure,
-  type ClientFactory,
+  type OpenAIDependencies,
   type OperationFailureCategory,
   type RequiredInputName,
   type ReleaseFacts,
@@ -42,11 +42,15 @@ function formatFailure(error: unknown, fallbackCategory: OperationFailureCategor
   return `create-release: failed: category=${diagnostic.category} reason=${diagnostic.reason}${'input' in diagnostic ? ` input=${diagnostic.input}` : ''}\n`;
 }
 
-export async function run(clientFactory?: ClientFactory): Promise<void> {
+export async function run(dependencies?: OpenAIDependencies): Promise<void> {
   let failureCategory: OperationFailureCategory = 'model-generation';
 
   try {
-    const apiKey = getActionInput('openai-api-key');
+    const workloadIdentity = {
+      audience: getActionInput('openai-wif-audience'),
+      identityProviderId: getActionInput('openai-identity-provider-id'),
+      serviceAccountId: getActionInput('openai-service-account-id'),
+    };
     const contextInput = getActionInput('context-file');
     const factsInput = getActionInput('facts-file');
     const bodyInput = getActionInput('body-file');
@@ -92,7 +96,7 @@ export async function run(clientFactory?: ClientFactory): Promise<void> {
       fail({ category: 'release-facts-validation', reason: 'invalid-facts' });
     }
 
-    const notes = await generateNotes(context, apiKey, clientFactory);
+    const notes = await generateNotes(context, workloadIdentity, dependencies);
 
     failureCategory = 'rendering';
     const body = renderReleaseBody(notes, facts);

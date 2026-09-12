@@ -1,8 +1,14 @@
 name: Generate Release Notes
 description: Generate and deterministically render validated release notes
 inputs:
-  openai-api-key:
-    description: OpenAI API key used only by this generation process
+  openai-wif-audience:
+    description: Audience configured on the OpenAI workload identity provider
+    required: true
+  openai-identity-provider-id:
+    description: OpenAI workload identity provider identifier
+    required: true
+  openai-service-account-id:
+    description: OpenAI service account identifier used by workload identity federation
     required: true
   context-file:
     description: Secret-free bounded repository context file

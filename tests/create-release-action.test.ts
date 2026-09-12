@@ -12,6 +12,7 @@ import {
   validateReleaseFacts,
   type ReleaseFacts,
   type ResponseClient,
+  type WorkloadIdentityClientOptions,
 } from '../actions/create-release/src/index.ts';
 
 const facts: ReleaseFacts = {
@@ -47,7 +48,14 @@ function completedResponse(text: string): unknown {
   };
 }
 
-const releaseInputNames = ['openai-api-key', 'context-file', 'facts-file', 'body-file'] as const;
+const releaseInputNames = [
+  'openai-wif-audience',
+  'openai-identity-provider-id',
+  'openai-service-account-id',
+  'context-file',
+  'facts-file',
+  'body-file',
+] as const;
 type ReleaseInputName = (typeof releaseInputNames)[number];
 
 interface RunOptions {
@@ -66,7 +74,9 @@ interface RunResult {
   body: string | undefined;
   clientCreated: boolean;
   exitCode: number | string | null | undefined;
-  observedKey: string;
+  observedAudience: string;
+  observedOptions: WorkloadIdentityClientOptions | undefined;
+  observedToken: string;
   runnerTemp: string;
   stderr: string;
 }
@@ -94,7 +104,9 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
   const originalStderrWrite = process.stderr.write.bind(process.stderr);
 
   let clientCreated = false;
-  let observedKey = '';
+  let observedAudience = '';
+  let observedOptions: WorkloadIdentityClientOptions | undefined;
+  let observedToken = '';
   let stderr = '';
 
   try {
@@ -110,7 +122,9 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
     }
 
     const inputValues: Record<ReleaseInputName, string> = {
-      'openai-api-key': 'openai-secret-value',
+      'openai-wif-audience': 'openai-audience-value',
+      'openai-identity-provider-id': 'openai-provider-value',
+      'openai-service-account-id': 'openai-service-account-value',
       'context-file': options.contextInput ?? contextPath,
       'facts-file': options.factsInput ?? factsPath,
       'body-file': options.bodyInput ?? bodyPath,
@@ -132,33 +146,40 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
       return true;
     };
 
-    await run((apiKey) => {
-      clientCreated = true;
-      observedKey = apiKey;
-      return {
-        responses: {
-          create: () => {
-            if (options.modelError) {
-              return Promise.reject(options.modelError);
-            }
-            return Promise.resolve(
-              completedResponse(
+    await run({
+      clientFactory: (clientOptions) => {
+        clientCreated = true;
+        observedOptions = clientOptions;
+        return {
+          responses: {
+            create: async () => {
+              observedToken = await clientOptions.workloadIdentity.provider.getToken();
+              if (options.modelError) {
+                throw options.modelError;
+              }
+              return completedResponse(
                 JSON.stringify({
                   description: 'This release improves delivery reliability.',
                   highlights: ['Handles important release paths safely'],
                 }),
-              ),
-            );
+              );
+            },
           },
-        },
-      };
+        };
+      },
+      getIDToken: (audience) => {
+        observedAudience = audience;
+        return Promise.resolve('github-oidc-token-value');
+      },
     });
 
     return {
       body: process.exitCode === undefined ? await readFile(bodyPath, 'utf8') : undefined,
       clientCreated,
       exitCode: process.exitCode,
-      observedKey,
+      observedAudience,
+      observedOptions,
+      observedToken,
       runnerTemp,
       stderr,
     };
@@ -179,17 +200,25 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
 }
 
 function assertRedacted(result: RunResult): void {
-  assert.doesNotMatch(result.stderr, /openai-secret-value|untrusted|release-session|diagnostics-/u);
+  assert.doesNotMatch(
+    result.stderr,
+    /openai-(?:audience|provider|service-account)-value|github-oidc-token-value|untrusted|release-session|diagnostics-/u,
+  );
   assert.ok(!result.stderr.includes(result.runnerTemp));
 }
 
 void test('run reports safe diagnostics without changing action input lookup or exposing values', async (context) => {
-  await context.test('the existing hyphenated input environment names reach generation', async () => {
+  await context.test('the WIF inputs configure GitHub OIDC authentication without an API key', async () => {
     const result = await exerciseRun();
 
     assert.equal(result.exitCode, undefined);
     assert.equal(result.stderr, '');
-    assert.equal(result.observedKey, 'openai-secret-value');
+    assert.equal(result.observedOptions?.apiKey, null);
+    assert.equal(result.observedOptions?.workloadIdentity.identityProviderId, 'openai-provider-value');
+    assert.equal(result.observedOptions?.workloadIdentity.serviceAccountId, 'openai-service-account-value');
+    assert.equal(result.observedOptions?.workloadIdentity.provider.tokenType, 'jwt');
+    assert.equal(result.observedAudience, 'openai-audience-value');
+    assert.equal(result.observedToken, 'github-oidc-token-value');
     assert.match(result.body ?? '', /^This release improves delivery reliability\./u);
   });
 
@@ -279,7 +308,7 @@ void test('run reports safe diagnostics without changing action input lookup or 
 
   await context.test('model failures expose neither the operation error nor supplied content', async () => {
     const result = await exerciseRun({
-      modelError: new Error('openai-secret-value untrusted-context-secret-value model-output-secret-value'),
+      modelError: new Error('github-oidc-token-value untrusted-context-secret-value model-output-secret-value'),
     });
 
     assert.equal(result.clientCreated, true);
@@ -308,7 +337,7 @@ void test('run reports safe diagnostics without changing action input lookup or 
   });
 });
 
-void test('consumer composite scopes GitHub and OpenAI credentials to different processes', async () => {
+void test('consumer composite scopes the GitHub token away from WIF generation', async () => {
   const metadata = await readFile(new URL('../create-release/action.yaml', import.meta.url), 'utf8');
 
   const contextStep = metadata.slice(metadata.indexOf('- id: context'), metadata.indexOf('- id: preflight'));
@@ -323,17 +352,26 @@ void test('consumer composite scopes GitHub and OpenAI credentials to different 
   const publisherStep = metadata.slice(metadata.indexOf('- id: publish'));
   const cleanupStep = metadata.slice(metadata.indexOf('- name: Clean up release session'));
 
-  assert.doesNotMatch(contextStep, /inputs\.(?:token|openai-api-key)/u);
+  assert.doesNotMatch(
+    contextStep,
+    /inputs\.(?:token|openai-(?:wif-audience|identity-provider-id|service-account-id))/u,
+  );
   assert.match(contextStep, /INPUT_PATHSPECS: \$\{\{ inputs\.pathspecs \}\}/u);
   assert.match(preflightStep, /inputs\.token/u);
-  assert.doesNotMatch(preflightStep, /inputs\.openai-api-key/u);
-  assert.match(generatorStep, /inputs\.openai-api-key/u);
+  assert.doesNotMatch(preflightStep, /inputs\.openai-(?:wif-audience|identity-provider-id|service-account-id)/u);
+  assert.match(generatorStep, /inputs\.openai-wif-audience/u);
+  assert.match(generatorStep, /inputs\.openai-identity-provider-id/u);
+  assert.match(generatorStep, /inputs\.openai-service-account-id/u);
+  assert.doesNotMatch(generatorStep, /openai-api-key|OPENAI_API_KEY/u);
   assert.doesNotMatch(generatorStep, /inputs\.token/u);
   assert.match(publisherStep, /inputs\.token/u);
-  assert.doesNotMatch(publisherStep, /inputs\.openai-api-key/u);
+  assert.doesNotMatch(publisherStep, /inputs\.openai-(?:wif-audience|identity-provider-id|service-account-id)/u);
   assert.match(cleanupStep, /if: always\(\)/u);
   assert.match(cleanupStep, /steps\.context\.outputs\.session-directory/u);
-  assert.doesNotMatch(cleanupStep, /inputs\.(?:token|openai-api-key)/u);
+  assert.doesNotMatch(
+    cleanupStep,
+    /inputs\.(?:token|openai-(?:wif-audience|identity-provider-id|service-account-id))/u,
+  );
   assert.match(metadata, /fetch-depth: 0/u);
   assert.match(metadata, /fetch-tags: true/u);
 });

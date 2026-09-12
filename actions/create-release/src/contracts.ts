@@ -25,8 +25,38 @@ export interface ResponseClient {
   responses: { create(request: unknown): Promise<unknown> };
 }
 
-export type ClientFactory = (apiKey: string) => ResponseClient;
-export type RequiredInputName = 'openai-api-key' | 'context-file' | 'facts-file' | 'body-file';
+export interface WorkloadIdentityInputs {
+  audience: string;
+  identityProviderId: string;
+  serviceAccountId: string;
+}
+
+export interface WorkloadIdentityClientOptions {
+  apiKey: null;
+  workloadIdentity: {
+    identityProviderId: string;
+    serviceAccountId: string;
+    provider: {
+      tokenType: 'jwt';
+      getToken: () => Promise<string>;
+    };
+  };
+}
+
+export type ClientFactory = (options: WorkloadIdentityClientOptions) => ResponseClient;
+export type IDTokenProvider = (audience: string) => Promise<string>;
+export interface OpenAIDependencies {
+  clientFactory?: ClientFactory;
+  getIDToken?: IDTokenProvider;
+}
+
+export type RequiredInputName =
+  | 'openai-wif-audience'
+  | 'openai-identity-provider-id'
+  | 'openai-service-account-id'
+  | 'context-file'
+  | 'facts-file'
+  | 'body-file';
 export type InputFileRole = 'context-file' | 'facts-file' | 'body-file';
 export type OperationFailureCategory = 'model-generation' | 'rendering' | 'output-write';
 

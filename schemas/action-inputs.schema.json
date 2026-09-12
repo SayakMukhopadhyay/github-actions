@@ -509,9 +509,17 @@
                             "type": ["string", "number", "boolean"],
                             "description": "Displayed GitHub Release name"
                           },
-                          "openai-api-key": {
+                          "openai-wif-audience": {
                             "type": ["string", "number", "boolean"],
-                            "description": "OpenAI API key used only to generate the release description"
+                            "description": "Audience configured on the OpenAI workload identity provider"
+                          },
+                          "openai-identity-provider-id": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "OpenAI workload identity provider identifier"
+                          },
+                          "openai-service-account-id": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "OpenAI service account identifier used by workload identity federation"
                           },
                           "pathspecs": {
                             "type": ["string", "number", "boolean"],
@@ -520,7 +528,14 @@
                           }
                         },
                         "additionalProperties": false,
-                        "required": ["token", "tag-name", "release-name", "openai-api-key"]
+                        "required": [
+                          "token",
+                          "tag-name",
+                          "release-name",
+                          "openai-wif-audience",
+                          "openai-identity-provider-id",
+                          "openai-service-account-id"
+                        ]
                       }
                     },
                     "required": ["with"]
