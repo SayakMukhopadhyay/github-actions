@@ -260,6 +260,71 @@ void test('container promotion metadata performs one direct digest-to-tag operat
   assert.doesNotMatch(promotionModule, /imagetools['"]?,['"]?inspect|docker pull|docker (?:image )?build(?: |$)/u);
 });
 
+void test('registry credential policy is wired before every registry login', () => {
+  const build = readAction('container-build-push');
+  const buildSteps = build.runs?.steps ?? [];
+  const buildPrepare = buildSteps.find((step) => step.id === 'prepare');
+  const buildLoginIndex = buildSteps.findIndex((step) => String(step.uses).startsWith('docker/login-action@'));
+  assert.equal(buildPrepare?.env?.INPUT_PUSH, '${{ inputs.push }}');
+  assert.equal(buildPrepare?.env?.INPUT_USERNAME, '${{ inputs.username }}');
+  assert.equal(buildPrepare?.env?.INPUT_PASSWORD, '${{ inputs.password }}');
+  assert.ok(buildSteps.indexOf(buildPrepare) < buildLoginIndex);
+
+  const inspection = readAction('container-image-inspect');
+  const inspectionSteps = inspection.runs?.steps ?? [];
+  assert.ok(
+    inspectionSteps.findIndex((step) => step.id === 'prepare') <
+      inspectionSteps.findIndex((step) => String(step.uses).startsWith('docker/login-action@')),
+  );
+
+  const promotion = readAction('container-promote');
+  const promotionSteps = promotion.runs?.steps ?? [];
+  const promotionPrepare = promotionSteps.find((step) => step.id === 'prepare');
+  const promotionModule = readFileSync(path.join(root, 'container-promote', 'ContainerPromotion.psm1'), 'utf8');
+  assert.equal(promotionPrepare?.env?.INPUT_USERNAME, '${{ inputs.username }}');
+  assert.equal(promotionPrepare?.env?.INPUT_PASSWORD, '${{ inputs.password }}');
+  assert.ok(
+    promotionSteps.indexOf(promotionPrepare) <
+      promotionSteps.findIndex((step) => String(step.uses).startsWith('docker/login-action@')),
+  );
+
+  for (const [actionName, requirement] of [
+    ['helm-package-push', "${{ inputs.push == 'true' && 'Required' || 'Optional' }}"],
+    ['chart-update-deploy', "${{ inputs.registry != '' && 'Required' || 'Forbidden' }}"],
+  ] as const) {
+    const metadata = readAction(actionName);
+    const steps = metadata.runs?.steps ?? [];
+    const validationIndex = steps.findIndex((step) => step.name === 'Validate registry credentials');
+    const loginIndex = steps.findIndex((step) => step.name === 'Log in to OCI registry');
+    const validation = steps[validationIndex];
+
+    assert.notEqual(validationIndex, -1, `${actionName} credential validation step`);
+    assert.ok(validationIndex < loginIndex, `${actionName} validates before login`);
+    assert.equal(validation?.env?.REGISTRY_CREDENTIAL_REQUIREMENT, requirement);
+    assert.equal(validation?.env?.INPUT_USERNAME, '${{ inputs.username }}');
+    assert.equal(validation?.env?.INPUT_PASSWORD, '${{ inputs.password }}');
+    assert.match(String(validation?.run), /validate-registry-credentials\.ps1/u);
+  }
+
+  const buildModule = readFileSync(path.join(root, 'container-build-push', 'ContainerBuild.psm1'), 'utf8');
+  assert.match(buildModule, /INPUT_PUSH -eq 'true'.+?'Required'.+?'Optional'/su);
+  assert.ok(buildModule.indexOf('Assert-RegistryCredentials') < buildModule.indexOf('Resolve-ContainerImageReference'));
+
+  const inspectionModule = readFileSync(
+    path.join(root, 'container-image-inspect', 'ContainerImageInspect.psm1'),
+    'utf8',
+  );
+  assert.match(inspectionModule, /Assert-RegistryCredentials[\s\S]+?-Requirement Optional/u);
+
+  assert.match(promotionModule, /Assert-RegistryCredentials[\s\S]+?-Requirement Required/u);
+  assert.ok(
+    promotionModule.indexOf('Assert-RegistryCredentials') < promotionModule.indexOf('Resolve-ContainerImageName'),
+  );
+  assert.match(promotionModule, /New-ContainerDigestReference/u);
+  assert.match(promotionModule, /New-ContainerTagReference/u);
+  assert.doesNotMatch(promotionModule, /registryPattern|pathPattern/u);
+});
+
 void test('Azure ACR token metadata keeps OIDC inputs, token outputs, and the immutable login pin explicit', () => {
   const metadata = readAction('azure-acr-token');
 

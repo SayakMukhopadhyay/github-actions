@@ -75,6 +75,9 @@ runs:
         INPUT_COMPONENT: ${{ inputs.component }}
         INPUT_REGISTRY: ${{ inputs.registry }}
         INPUT_IMAGE_REPOSITORY: ${{ inputs.image-repository }}
+        INPUT_PUSH: ${{ inputs.push }}
+        INPUT_USERNAME: ${{ inputs.username }}
+        INPUT_PASSWORD: ${{ inputs.password }}
         SOURCE_REPOSITORY: ${{ github.repository }}
       run: '& "$env:ACTION_PATH/prepare-build.ps1"'
     - name: Set up Docker Buildx

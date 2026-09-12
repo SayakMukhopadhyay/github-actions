@@ -4,13 +4,13 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ContainerImage.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'RegistryCredentials.psm1') -Force
 
 function Initialize-ContainerImageInspection {
-    $usernameSupplied = -not [string]::IsNullOrEmpty($env:INPUT_USERNAME)
-    $passwordSupplied = -not [string]::IsNullOrEmpty($env:INPUT_PASSWORD)
-    if ($usernameSupplied -xor $passwordSupplied) {
-        throw 'Registry username and password must be provided together'
-    }
+    Assert-RegistryCredentials `
+        -RegistryUser $env:INPUT_USERNAME `
+        -RegistrySecret $env:INPUT_PASSWORD `
+        -Requirement Optional
 
     $imageReference = Resolve-ContainerImageReference `
         -Version $env:INPUT_VERSION `

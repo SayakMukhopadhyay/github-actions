@@ -5,17 +5,15 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'ActionRuntime.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'OciArtifactProbe.psm1') -Force
 
-function Resolve-ContainerImageReference {
+function Resolve-ContainerImageName {
     [CmdletBinding()]
     param(
-        [AllowEmptyString()][string] $Version,
-        [AllowEmptyString()][string] $Component,
-        [AllowEmptyString()][string] $Registry,
-        [AllowEmptyString()][string] $ImageRepository,
-        [AllowEmptyString()][string] $SourceRepository
+        [AllowEmptyString()] [string] $Component,
+        [AllowEmptyString()] [string] $Registry,
+        [AllowEmptyString()] [string] $ImageRepository,
+        [AllowEmptyString()] [string] $SourceRepository
     )
 
-    $version = Assert-SingleLine $Version version
     $component = $Component
     $registry = if ($Registry) {
         $Registry
@@ -49,15 +47,60 @@ function Resolve-ContainerImageReference {
     if ($component -and $component -notmatch $pathPattern) {
         throw 'Invalid image component'
     }
-    if ($version -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$') {
-        throw 'Invalid container version tag'
-    }
 
     $imageName = "$registry/$repository"
     if ($component) {
         $imageName = "$imageName/$component"
     }
-    "$imageName`:$version"
+    $imageName
+}
+
+function New-ContainerTagReference {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $ImageName,
+        [AllowEmptyString()] [string] $Tag
+    )
+
+    $tag = Assert-SingleLine $Tag tag
+    if ($tag -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$') {
+        throw 'Invalid container version tag'
+    }
+    '{0}:{1}' -f $ImageName, $tag
+}
+
+function New-ContainerDigestReference {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $ImageName,
+        [AllowEmptyString()] [string] $Digest
+    )
+
+    $digest = Assert-SingleLine $Digest digest
+    if ($digest -notmatch '^sha256:[0-9a-f]{64}$') {
+        throw 'Invalid container image digest'
+    }
+    '{0}@{1}' -f $ImageName, $digest
+}
+
+function Resolve-ContainerImageReference {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()] [string] $Version,
+        [AllowEmptyString()] [string] $Component,
+        [AllowEmptyString()] [string] $Registry,
+        [AllowEmptyString()] [string] $ImageRepository,
+        [AllowEmptyString()] [string] $SourceRepository
+    )
+
+    $coordinates = @{
+        Component        = $Component
+        Registry         = $Registry
+        ImageRepository  = $ImageRepository
+        SourceRepository = $SourceRepository
+    }
+    $imageName = Resolve-ContainerImageName @coordinates
+    New-ContainerTagReference -ImageName $imageName -Tag $Version
 }
 
 function Write-ContainerImageState {
@@ -90,4 +133,10 @@ function Write-ContainerImageState {
     Write-GitHubOutput 'image-digest' $manifest.digest
 }
 
-Export-ModuleMember -Function Resolve-ContainerImageReference, Write-ContainerImageState
+Export-ModuleMember -Function @(
+    'Resolve-ContainerImageName'
+    'New-ContainerTagReference'
+    'New-ContainerDigestReference'
+    'Resolve-ContainerImageReference'
+    'Write-ContainerImageState'
+)

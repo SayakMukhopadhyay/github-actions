@@ -14,6 +14,7 @@ Describe 'Container action preparation' {
             'INPUT_COMPONENT'
             'INPUT_REGISTRY'
             'INPUT_IMAGE_REPOSITORY'
+            'INPUT_PUSH'
             'INPUT_USERNAME'
             'INPUT_PASSWORD'
             'SOURCE_REPOSITORY'
@@ -42,6 +43,21 @@ Describe 'Container action preparation' {
 
         (Get-Content -Raw $env:GITHUB_OUTPUT) |
             Should -Match 'image-reference=ghcr.io/owner/repository/api:1.2.3'
+    }
+
+    It 'enforces build credentials according to push mode' {
+        $env:INPUT_VERSION = '1.2.3'
+        $env:INPUT_PUSH = 'true'
+
+        { Initialize-ContainerBuild } | Should -Throw '*both required*'
+
+        $env:INPUT_USERNAME = 'user'
+        $env:INPUT_PASSWORD = 'token'
+        { Initialize-ContainerBuild } | Should -Not -Throw
+
+        $env:INPUT_PUSH = 'false'
+        $env:INPUT_PASSWORD = $null
+        { Initialize-ContainerBuild } | Should -Throw '*provided together*'
     }
 
     It 'rejects metacharacters and control characters in image coordinates' {
@@ -124,6 +140,8 @@ Describe 'Container action preparation' {
         $env:INPUT_SOURCE_DIGEST = 'sha256:' + ('a' * 64)
         $env:INPUT_TAG = '1.2.3'
         $env:INPUT_COMPONENT = 'WEB'
+        $env:INPUT_USERNAME = 'user'
+        $env:INPUT_PASSWORD = 'token'
 
         Initialize-ContainerPromotion
 
@@ -135,8 +153,43 @@ Describe 'Container action preparation' {
     It 'rejects malformed digests and target tags' {
         $env:INPUT_SOURCE_DIGEST = 'sha256:bad'
         $env:INPUT_TAG = 'bad tag'
+        $env:INPUT_USERNAME = 'user'
+        $env:INPUT_PASSWORD = 'token'
 
         { Initialize-ContainerPromotion } | Should -Throw
+    }
+
+    It 'requires promotion credentials before constructing references' {
+        $env:INPUT_SOURCE_DIGEST = 'sha256:' + ('a' * 64)
+        $env:INPUT_TAG = '1.2.3'
+
+        { Initialize-ContainerPromotion } | Should -Throw '*both required*'
+    }
+
+    It 'normalizes identical image coordinates across build, inspection, and promotion' {
+        $env:INPUT_VERSION = 'BUILD-AbCd'
+        $env:INPUT_TAG = $env:INPUT_VERSION
+        $env:INPUT_SOURCE_DIGEST = 'sha256:' + ('a' * 64)
+        $env:INPUT_COMPONENT = 'API'
+        $env:INPUT_REGISTRY = 'REGISTRY.Example.COM:5000'
+        $env:INPUT_IMAGE_REPOSITORY = 'Owner/Product'
+
+        Initialize-ContainerBuild
+        $buildReference = (Get-Content $env:GITHUB_OUTPUT | Where-Object { $_ -like 'image-reference=*' }) -replace '^image-reference=', ''
+
+        Remove-Item -LiteralPath $env:GITHUB_OUTPUT
+        Initialize-ContainerImageInspection
+        $inspectionReference = (Get-Content $env:GITHUB_OUTPUT | Where-Object { $_ -like 'image-reference=*' }) -replace '^image-reference=', ''
+
+        Remove-Item -LiteralPath $env:GITHUB_OUTPUT
+        $env:INPUT_USERNAME = 'user'
+        $env:INPUT_PASSWORD = 'token'
+        Initialize-ContainerPromotion
+        $promotionReference = (Get-Content $env:GITHUB_OUTPUT | Where-Object { $_ -like 'target-reference=*' }) -replace '^target-reference=', ''
+
+        $buildReference | Should -Be 'registry.example.com:5000/owner/product/api:BUILD-AbCd'
+        $inspectionReference | Should -Be $buildReference
+        $promotionReference | Should -Be $buildReference
     }
 
     It 'uses exactly one direct imagetools command and propagates failures' {

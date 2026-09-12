@@ -4,8 +4,19 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ContainerImage.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'RegistryCredentials.psm1') -Force
 
 function Initialize-ContainerBuild {
+    $credentialRequirement = if ($env:INPUT_PUSH -eq 'true') {
+        'Required'
+    } else {
+        'Optional'
+    }
+    Assert-RegistryCredentials `
+        -RegistryUser $env:INPUT_USERNAME `
+        -RegistrySecret $env:INPUT_PASSWORD `
+        -Requirement $credentialRequirement
+
     $imageReference = Resolve-ContainerImageReference `
         -Version $env:INPUT_VERSION `
         -Component $env:INPUT_COMPONENT `
