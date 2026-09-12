@@ -15,7 +15,7 @@ export function run(): void {
     const result = mutateVersions({
       workspace: process.env.GITHUB_WORKSPACE ?? process.cwd(),
       workingDirectory: core.getInput('working-directory') || '.',
-      increment: core.getInput('increment') || 'patch',
+      increment: core.getInput('increment', { required: true }),
       helm,
       go,
     });

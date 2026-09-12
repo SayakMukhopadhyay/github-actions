@@ -23100,7 +23100,7 @@ function run() {
 		const result = mutateVersions({
 			workspace: process.env.GITHUB_WORKSPACE ?? process.cwd(),
 			workingDirectory: getInput("working-directory") || ".",
-			increment: getInput("increment") || "patch",
+			increment: getInput("increment", { required: true }),
 			helm,
 			go
 		});

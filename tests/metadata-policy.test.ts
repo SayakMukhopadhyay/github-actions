@@ -166,6 +166,19 @@ void test('container build metadata keeps one version tag, exact forwarding, and
   assert.match(String(probe?.run), /probe-image\.ps1/u);
 });
 
+void test('bump-version requires an explicit increment at every action boundary', () => {
+  const publicMetadata = readAction('bump-version');
+  const privateMetadata = readAction('actions/bump-version');
+  const implementation = readFileSync(path.join(root, 'actions', 'bump-version', 'src', 'index.ts'), 'utf8');
+
+  assert.equal(publicMetadata.inputs?.increment?.required, true);
+  assert.equal('default' in (publicMetadata.inputs?.increment ?? {}), false);
+  assert.equal(privateMetadata.inputs?.increment?.required, true);
+  assert.equal('default' in (privateMetadata.inputs?.increment ?? {}), false);
+  assert.match(implementation, /core\.getInput\('increment', \{ required: true \}\)/u);
+  assert.doesNotMatch(implementation, /increment:\s*core\.getInput\('increment'\)\s*\|\|/u);
+});
+
 void test('container image inspection metadata is exact-reference and read-only', () => {
   const metadata = readAction('container-image-inspect');
 
