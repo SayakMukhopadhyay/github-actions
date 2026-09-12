@@ -63,14 +63,6 @@ void test('accepts valid inputs for each documented consumer action', async () =
     ],
     ['helm-package-push', { development: 'true' }],
     [
-      'helm-deployment-state',
-      {
-        token: '${{ secrets.GITHUB_TOKEN }}',
-        environment: 'production',
-        'chart-name': 'api',
-      },
-    ],
-    [
       'argocd-verify-deployment',
       {
         server: 'argocd.example.com',
@@ -171,18 +163,6 @@ void test('rejects the private Helm package source revision input', async () => 
 
 void test('rejects a missing caller-required action input', async () => {
   assert.equal(await validateWorkflow(workflowFor('SayakMukhopadhyay/github-actions/is-file-changed@v1')), false);
-});
-
-void test('rejects missing required Helm deployment state inputs', async () => {
-  assert.equal(
-    await validateWorkflow(
-      workflowFor('SayakMukhopadhyay/github-actions/helm-deployment-state@v1', {
-        token: '${{ secrets.GITHUB_TOKEN }}',
-        environment: 'production',
-      }),
-    ),
-    false,
-  );
 });
 
 void test('rejects missing required Argo CD deployment verification inputs', async () => {

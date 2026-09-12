@@ -246,27 +246,6 @@ Registry authentication failures, rejected tag writes, and other Docker command 
 
 For development packages, `chart-version` is exactly `0.0.0-build-<full lowercase commit SHA from github.sha>` and is independent of `charts/VERSION`. Stable packages continue to use `charts/VERSION`. For publication, provide `username` and `password`. The mandatory push-time exact-reference check uses Helm's registry-neutral OCI lookup and the same fail-closed standard OCI not-found classification as the container action. Outputs are `chart-name` and `chart-version`.
 
-## `helm-deployment-state`
-
-`SayakMukhopadhyay/github-actions/helm-deployment-state@v1` reads the selected dependency version and image tag from a Helm wrapper chart without running Helm or changing the target repository.
-
-```yaml
-permissions:
-  contents: read
-
-steps:
-  - id: deployment
-    uses: SayakMukhopadhyay/github-actions/helm-deployment-state@v1
-    with:
-      token: ${{ github.token }}
-      environment: production
-      chart-name: golfs
-```
-
-By default, the action checks out `main` from `SayakMukhopadhyay/k8s-landscape-charts` without persisting credentials, reads `<chart-name>/envs/<environment>/Chart.yaml` and `values.yaml`, and selects the one dependency whose name or alias equals `chart-name`. `dependency`, `target-repository`, `target-ref`, and `wrapper-chart-path` provide explicit overrides.
-
-The selected dependency's alias is its values root when present; otherwise its name is used. Outputs are `dependency-version`, `image-tag`, and `chart-source-ref`. A development dependency version of exactly `0.0.0-build-<full lowercase commit SHA>` yields the full SHA as `chart-source-ref`; a canonical stable `MAJOR.MINOR.PATCH` yields `chart-v<version>`. Paths outside the checkout, symlinked authority files, ambiguous dependencies, malformed mappings, empty values, and any other dependency version fail closed.
-
 ## `chart-update-deploy`
 
 `SayakMukhopadhyay/github-actions/chart-update-deploy@v1` atomically promotes a Helm dependency version, its image tag, or both in the personal GitOps repository or a caller-selected override.

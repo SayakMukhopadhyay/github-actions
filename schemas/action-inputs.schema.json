@@ -597,56 +597,6 @@
                 },
                 {
                   "if": {
-                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/helm-deployment-state@v1" } },
-                    "required": ["uses"]
-                  },
-                  "then": {
-                    "properties": {
-                      "with": {
-                        "type": "object",
-                        "properties": {
-                          "token": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Token with contents read permission for the target repository"
-                          },
-                          "environment": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Environment whose wrapper chart state is being read"
-                          },
-                          "chart-name": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Name of the chart whose deployment state is being read"
-                          },
-                          "dependency": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Dependency name or alias to read; defaults to chart-name",
-                            "default": ""
-                          },
-                          "target-repository": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "GitHub owner/repository containing the wrapper chart",
-                            "default": "SayakMukhopadhyay/k8s-landscape-charts"
-                          },
-                          "target-ref": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Git ref to read in the target repository",
-                            "default": "main"
-                          },
-                          "wrapper-chart-path": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Wrapper chart path; defaults to chart-name/envs/environment",
-                            "default": ""
-                          }
-                        },
-                        "additionalProperties": false,
-                        "required": ["token", "environment", "chart-name"]
-                      }
-                    },
-                    "required": ["with"]
-                  }
-                },
-                {
-                  "if": {
                     "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/helm-package-push@v1" } },
                     "required": ["uses"]
                   },

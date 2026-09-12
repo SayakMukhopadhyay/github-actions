@@ -256,10 +256,6 @@ function Bundle {
             Output = 'actions/helm-package-push/dist/index.mjs'
         }
         @{
-            Input  = 'actions/helm-deployment-state/src/index.ts'
-            Output = 'actions/helm-deployment-state/dist/index.mjs'
-        }
-        @{
             Input  = 'actions/argocd-verify-deployment/argocd-verify-deployment.ts'
             Output = 'actions/argocd-verify-deployment/dist/index.mjs'
         }
@@ -339,7 +335,6 @@ function Validate {
         'actions/is-file-changed/dist'
         'actions/bump-version/dist'
         'actions/helm-package-push/dist'
-        'actions/helm-deployment-state/dist'
         'actions/argocd-verify-deployment/dist'
         'actions/create-release/dist'
     )
