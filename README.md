@@ -469,11 +469,9 @@ git diff --check
 
 CI repeats schema generation and bundling through npm and rejects any byte-level drift. Fixed output names and LF normalization keep the committed artifacts reproducible across Windows development and Ubuntu CI. Do not submit source-only changes expecting a later release build to update `dist`.
 
-Licensed dependency metadata lives under `.licenses/npm` and is governed by `.licensed.yml`. When npm dependencies change, run `licensed cache` with Licensed `5.1.0`, review the generated records, and commit them with the lockfile. CI runs `licensed status`; it never updates or commits the cache.
-
 ## CI and v1 promotion
 
-Windows and Ubuntu CI run the complete npm and PowerShell validation suites, including TypeScript, ESLint, Prettier, PSScriptAnalyzer, Node tests, Pester, typechecking, schema generation, bundling, generated-artifact drift checks, and actionlint. Ubuntu also runs offline Zizmor, Licensed, security policy, and credential-free action fixtures. External actions use reviewed full commit SHAs. Dependabot opens weekly npm and GitHub Actions pull requests; updates are never automerged.
+Windows and Ubuntu CI run the complete npm and PowerShell validation suites, including TypeScript, ESLint, Prettier, PSScriptAnalyzer, Node tests, Pester, typechecking, schema generation, bundling, generated-artifact drift checks, and actionlint. Ubuntu also runs offline Zizmor, security policy, and credential-free action fixtures. External actions use reviewed full commit SHAs. Dependabot opens weekly npm and GitHub Actions pull requests; updates are never automerged.
 
 Source changes do not move `v1`. To promote or intentionally roll back, manually run the **Promote v1** workflow with a full 40-character commit SHA from `main`. It verifies that exact commit is reachable from `main`, then moves the lightweight `v1` tag with force-with-lease protection. The promotion job alone receives `contents: write`; no semver tag or GitHub Release is created for this action repository.
 

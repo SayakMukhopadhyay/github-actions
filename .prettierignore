@@ -1,5 +1,4 @@
 .tools/
-.licenses/
 node_modules/
 **/dist/
 tests/fixtures/

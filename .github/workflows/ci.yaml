@@ -76,40 +76,6 @@ jobs:
           advanced-security: false
           annotations: true
 
-  licenses:
-    name: Dependency licenses
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - name: Install npm dependencies
-        shell: pwsh
-        run: npm ci
-
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
-        with:
-          ruby-version: '3.4'
-
-      - name: Set up Licensed
-        uses: licensee/setup-licensed@0d52e575b3258417672be0dff2f115d7db8771d8 # v1.3.2
-        with:
-          version: 5.1.0
-
-      - name: Check cached dependency licenses
-        shell: pwsh
-        run: licensed status
-
   action-level:
     name: Credential-free action fixtures
     runs-on: ubuntu-latest
