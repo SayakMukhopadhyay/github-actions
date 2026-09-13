@@ -160,3 +160,31 @@ Describe 'Helm package transaction' {
         { Invoke-HelmTransaction } | Should -Throw '*did not create the expected package*'
     }
 }
+
+Describe 'Helm package action entrypoint' {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1') -Force
+    }
+
+    It 'preserves the original transaction failure in the GitHub annotation' {
+        $repositories = Join-Path $TestDrive 'repositories'
+        [IO.File]::WriteAllBytes($repositories, [byte[]]::new(0))
+        $entrypoint = Join-Path $PSScriptRoot '..' 'helm-package-push' 'helm-transaction.ps1'
+        $result = Invoke-NativeProcess pwsh @('-NoProfile', '-File', $entrypoint) `
+            -Environment @{
+            GITHUB_WORKSPACE        = $TestDrive
+            RUNNER_TEMP             = $TestDrive
+            INPUT_CHART_DIRECTORY   = $TestDrive
+            INPUT_REPOSITORIES_FILE = $repositories
+            INPUT_CHART_NAME        = ''
+            INPUT_CHART_VERSION     = '1.2.3'
+            INPUT_PUSH              = 'false'
+            GITHUB_OUTPUT           = Join-Path $TestDrive 'entrypoint-output'
+        } -RawOutput -AllowFailure
+
+        $diagnostic = "$($result.StandardOutput)`n$($result.StandardError)"
+        $result.ExitCode | Should -Be 1
+        $diagnostic | Should -Match '::error::chart-name must be a non-empty single-line value'
+        $diagnostic | Should -Not -Match "The term 'Write-GitHubAnnotation' is not recognized"
+    }
+}

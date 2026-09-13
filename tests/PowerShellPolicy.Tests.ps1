@@ -72,6 +72,17 @@ Describe 'PowerShell migration policy' {
         }
     }
 
+    It 'does not force-reload the shared action runtime from nested modules' {
+        $root = Join-Path $PSScriptRoot '..'
+        $modules = @(& git -C $root ls-files '*.psm1' | Where-Object { Test-Path (Join-Path $root $_) })
+
+        foreach ($module in $modules) {
+            $source = Get-Content -Raw (Join-Path $root $module)
+
+            $source | Should -Not -Match '(?im)^\s*Import-Module[^\r\n]*ActionRuntime\.psm1[^\r\n]*\s-Force\s*$'
+        }
+    }
+
     It 'retains sanitized create-release diagnostic categories' {
         $root = Join-Path $PSScriptRoot '..'
         (Get-Content -Raw (Join-Path $root 'create-release/collect-git-context.ps1')) |

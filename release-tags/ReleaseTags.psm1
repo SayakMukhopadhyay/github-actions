@@ -2,7 +2,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1')
 
 function Invoke-ReleaseTags {
     $mode = if ($env:INPUT_MODE) {

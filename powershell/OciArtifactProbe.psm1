@@ -36,9 +36,26 @@ function Invoke-OciArtifactProbe {
             $diagnostic -match "(?im)^ERROR:\s+${referencePattern}:\s+not found\s*$"
         )
     }
+    $isExactHelmChartAbsent = $false
+    $isHelmChartInspection = (
+        $FilePath -eq 'helm' -and
+        $ArgumentList.Count -eq 5 -and
+        $ArgumentList[0] -eq 'show' -and
+        $ArgumentList[1] -eq 'chart' -and
+        $ArgumentList[2].StartsWith('oci://') -and
+        $ArgumentList[3] -eq '--version'
+    )
+    if ($isHelmChartInspection) {
+        $chartReference = "$($ArgumentList[2].Substring('oci://'.Length)):$($ArgumentList[4])"
+        $referencePattern = [regex]::Escape($chartReference)
+        $isExactHelmChartAbsent = (
+            $diagnostic -match "(?im)^Error:\s+.*\b${referencePattern}:\s+not found\s*$"
+        )
+    }
     if (
         $diagnostic -match '(?i)(?:^|[^a-z_])(?:manifest|name)[ _]unknown(?:[^a-z_]|$)' -or
-        $isExactDockerReferenceAbsent
+        $isExactDockerReferenceAbsent -or
+        $isExactHelmChartAbsent
     ) {
         return [pscustomobject]@{
             Exists         = $false

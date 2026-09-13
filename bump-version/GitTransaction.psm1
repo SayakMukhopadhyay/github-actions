@@ -2,7 +2,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1')
 
 function Get-CanonicalPath([string] $Path) {
     (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path

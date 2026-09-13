@@ -92,6 +92,58 @@ Describe 'OCI artifact existence probe' {
             Should -Throw '*OCI artifact probe failed*'
     }
 
+    It 'treats Helm exact-reference not-found output as absent' {
+        $reference = 'ghcr.io/kode-blox/charts/golfs:0.0.0-build-' + ('a' * 40)
+        Mock Invoke-NativeProcess -ModuleName OciArtifactProbe {
+            [pscustomobject]@{
+                ExitCode       = 1
+                StandardOutput = ''
+                StandardError  = "Error: failed to perform `"FetchReference`" on source: ${reference}: not found"
+            }
+        }
+
+        $result = Invoke-OciArtifactProbe helm @(
+            'show'
+            'chart'
+            'oci://ghcr.io/kode-blox/charts/golfs'
+            '--version'
+            ('0.0.0-build-' + ('a' * 40))
+        )
+
+        $result.Exists | Should -BeFalse
+    }
+
+    It 'fails closed when Helm reports not found for a different reference' {
+        Mock Invoke-NativeProcess -ModuleName OciArtifactProbe {
+            [pscustomobject]@{
+                ExitCode       = 1
+                StandardOutput = ''
+                StandardError  = 'Error: failed to perform "FetchReference" on source: ghcr.io/owner/other:1.2.3: not found'
+            }
+        }
+
+        { Invoke-OciArtifactProbe helm @(
+                'show'
+                'chart'
+                'oci://ghcr.io/owner/repository'
+                '--version'
+                '1.2.3'
+            ) } | Should -Throw '*OCI artifact probe failed*'
+    }
+
+    It 'fails closed when another Helm command reports the exact reference as not found' {
+        Mock Invoke-NativeProcess -ModuleName OciArtifactProbe {
+            [pscustomobject]@{
+                ExitCode       = 1
+                StandardOutput = ''
+                StandardError  = 'Error: ghcr.io/owner/repository:1.2.3: not found'
+            }
+        }
+
+        { Invoke-OciArtifactProbe helm @('pull', 'oci://ghcr.io/owner/repository', '--version', '1.2.3') } |
+            Should -Throw '*OCI artifact probe failed*'
+    }
+
     It 'fails closed for authentication, network, and invalid-reference errors' -ForEach @(
         'unauthorized: authentication required'
         'dial tcp: lookup example.invalid: no such host'
