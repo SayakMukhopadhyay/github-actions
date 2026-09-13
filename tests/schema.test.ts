@@ -87,19 +87,6 @@ void test('accepts valid inputs for each documented consumer action', async () =
     ],
     ['helm-package-push', { development: 'true' }],
     [
-      'argocd-verify-deployment',
-      {
-        server: 'argocd.example.com',
-        application: 'api-production',
-        'auth-token': '${{ secrets.ARGOCD_AUTH_TOKEN }}',
-        'cloudflare-access-client-id': '${{ secrets.CF_ACCESS_CLIENT_ID }}',
-        'cloudflare-access-client-secret': '${{ secrets.CF_ACCESS_CLIENT_SECRET }}',
-        'expected-commit-sha': '${{ needs.promote.outputs.commit-sha }}',
-        'gitops-repository': 'SayakMukhopadhyay/k8s-landscape-charts',
-        'gitops-token': '${{ secrets.GITOPS_READ_TOKEN }}',
-      },
-    ],
-    [
       'chart-update-deploy',
       {
         token: '${{ secrets.GITHUB_TOKEN }}',
@@ -207,18 +194,6 @@ void test('rejects the removed create-release API key contract', async () => {
         'tag-name': 'v1.2.3',
         'release-name': 'v1.2.3',
         'openai-api-key': '${{ secrets.OPENAI_API_KEY }}',
-      }),
-    ),
-    false,
-  );
-});
-
-void test('rejects missing required Argo CD deployment verification inputs', async () => {
-  assert.equal(
-    await validateWorkflow(
-      workflowFor('SayakMukhopadhyay/github-actions/argocd-verify-deployment@v1', {
-        server: 'argocd.example.com',
-        application: 'api-production',
       }),
     ),
     false,

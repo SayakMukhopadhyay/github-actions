@@ -285,31 +285,6 @@ Supplying `chart-version` changes dependency metadata, `Chart.lock`, and the sel
 
 The action stages only the expected wrapper files and uses normal non-force pushes. If the target branch advances concurrently through unrelated files, it refreshes and reapplies the mutation once. A concurrent change to protected wrapper state, a divergent target branch, or a second failed push stops without forcing or overwriting the remote update.
 
-## `argocd-verify-deployment`
-
-> [!WARNING]
-> **Temporary bypass:** All operational steps are currently disabled, so the action succeeds without performing verification and does not emit `synchronized-revision`.
-
-`SayakMukhopadhyay/github-actions/argocd-verify-deployment@v1` waits for one Argo CD Application to become `Synced` and `Healthy`, then verifies that the expected GitOps commit is the reported synchronized revision or its Git ancestor. It uses Argo CD through gRPC-web and sends the supplied Cloudflare Access service-token headers on every Argo request.
-
-```yaml
-- id: deployment
-  uses: SayakMukhopadhyay/github-actions/argocd-verify-deployment@v1
-  with:
-    server: argocd.example.com
-    application: golfs-production
-    auth-token: ${{ secrets.ARGOCD_AUTH_TOKEN }}
-    cloudflare-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-    cloudflare-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-    expected-commit-sha: ${{ needs.promote.outputs.commit-sha }}
-    gitops-repository: SayakMukhopadhyay/k8s-landscape-charts
-    gitops-token: ${{ secrets.GITOPS_READ_TOKEN }}
-    timeout-seconds: '300'
-    smoke-url: https://golfs.example.com/health
-```
-
-The optional `smoke-url` receives the same Cloudflare Access headers and must return without an HTTP or network error. The action exposes `synchronized-revision`, supports Linux x64 runners, and installs Argo CD CLI `v3.5.2` from its versioned release URL only after verifying the pinned SHA-256 checksum. It is strictly read-only: it does not sync or refresh Argo CD, mutate GitOps state, commit, push, deploy, or access the cluster directly.
-
 ## `static-site-update-deploy`
 
 `SayakMukhopadhyay/github-actions/static-site-update-deploy@v1` promotes a static-site container image through its environment wrapper chart.
@@ -445,7 +420,7 @@ The wrapper references SchemaStore's live workflow schema and the committed `sch
 The repository is one npm package and does not use workspaces. JavaScript actions keep their TypeScript entry point, `action.yaml`, and generated `dist/index.mjs` together; maintained command transactions use PowerShell 7.4 or newer:
 
 - `check-version/`, `validate-static-site/`, and `dispatch-pages-deployment/` are directly callable as JavaScript actions.
-- `actions/argocd-verify-deployment/`, `actions/bump-version/`, `actions/create-release/`, `actions/helm-package-push/`, and `actions/is-file-changed/` are private implementation actions invoked by their root-level composite wrappers.
+- `actions/bump-version/`, `actions/create-release/`, `actions/helm-package-push/`, and `actions/is-file-changed/` are private implementation actions invoked by their root-level composite wrappers.
 - `tooling/` contains repository-maintenance programs such as schema generation.
 
 `powershell/ActionRuntime.psm1` is intentionally narrow: native process execution, GitHub workflow protocol helpers, single-line validation, and contained temporary cleanup. `ContainerImage.psm1` owns normalized image names plus tag and digest references, `RegistryCredentials.psm1` owns the shared credential policy, `OciArtifactProbe.psm1` owns fail-closed artifact existence classification, and `GitOpsChartUpdate.psm1` owns the chart mutation, lint, commit, and safe retry transaction. Action-local modules remain thin adapters where family-specific inputs or messages differ.
