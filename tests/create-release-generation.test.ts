@@ -8,8 +8,10 @@ import {
   generateNotes,
   renderReleaseBody,
   run,
+  SafeActionFailure,
   validateGeneratedNotes,
   validateReleaseFacts,
+  type DiagnosticEvent,
   type ReleaseFacts,
   type ResponseClient,
   type WorkloadIdentityClientOptions,
@@ -259,6 +261,116 @@ void test('the OpenAI request is fixed, stateless, tool-free, bounded, and schem
       additionalProperties: false,
     },
   });
+});
+
+void test('the real OpenAI client reports and classifies workload identity exchange failures safely', async () => {
+  const diagnostics: DiagnosticEvent[] = [];
+  const fetch: typeof globalThis.fetch = () =>
+    Promise.resolve(
+      new Response('{"error":"untrusted-token-exchange-detail"}', {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+  await assert.rejects(
+    generateNotes(
+      'untrusted-repository-context',
+      {
+        audience: 'https://api.openai.com/v1',
+        identityProviderId: 'idp-123',
+        serviceAccountId: 'sa-456',
+      },
+      {
+        fetch,
+        getIDToken: () => Promise.resolve('github-oidc-token-secret'),
+        reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      },
+    ),
+    (error) => {
+      assert.ok(error instanceof SafeActionFailure);
+      assert.deepEqual(error.diagnostic, {
+        category: 'workload-identity',
+        reason: 'openai-token-exchange-failed',
+      });
+      return true;
+    },
+  );
+
+  assert.deepEqual(diagnostics, [
+    { stage: 'github-oidc-token', event: 'started' },
+    { stage: 'github-oidc-token', event: 'succeeded' },
+    { stage: 'openai-token-exchange', event: 'started', attempt: 1 },
+    { stage: 'openai-token-exchange', event: 'http-response', attempt: 1, httpStatus: 403 },
+  ]);
+  assert.doesNotMatch(JSON.stringify(diagnostics), /untrusted|secret|idp-123|sa-456/u);
+});
+
+void test('the real OpenAI client distinguishes Responses API failures after a successful exchange', async () => {
+  const diagnostics: DiagnosticEvent[] = [];
+  const fetch: typeof globalThis.fetch = (input) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+
+    if (new URL(url).origin === 'https://auth.openai.com') {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            access_token: 'short-lived-openai-token-secret',
+            expires_in: 3_600,
+            token_type: 'bearer',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    }
+
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          error: { message: 'untrusted-api-error-detail', type: 'rate_limit_error', code: 'rate_limit' },
+        }),
+        { status: 429, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+  };
+
+  await assert.rejects(
+    generateNotes(
+      'untrusted-repository-context',
+      {
+        audience: 'https://api.openai.com/v1',
+        identityProviderId: 'idp-123',
+        serviceAccountId: 'sa-456',
+      },
+      {
+        fetch,
+        getIDToken: () => Promise.resolve('github-oidc-token-secret'),
+        reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      },
+    ),
+    (error) => {
+      assert.ok(error instanceof SafeActionFailure);
+      assert.deepEqual(error.diagnostic, {
+        category: 'model-generation',
+        reason: 'openai-response-request-failed',
+      });
+      return true;
+    },
+  );
+
+  assert.deepEqual(diagnostics, [
+    { stage: 'github-oidc-token', event: 'started' },
+    { stage: 'github-oidc-token', event: 'succeeded' },
+    { stage: 'openai-token-exchange', event: 'started', attempt: 1 },
+    { stage: 'openai-token-exchange', event: 'http-response', attempt: 1, httpStatus: 200 },
+    { stage: 'openai-response-request', event: 'started', attempt: 1 },
+    { stage: 'openai-response-request', event: 'http-response', attempt: 1, httpStatus: 429 },
+    { stage: 'openai-response-request', event: 'started', attempt: 2 },
+    { stage: 'openai-response-request', event: 'http-response', attempt: 2, httpStatus: 429 },
+    { stage: 'openai-response-request', event: 'started', attempt: 3 },
+    { stage: 'openai-response-request', event: 'http-response', attempt: 3, httpStatus: 429 },
+  ]);
+  assert.doesNotMatch(JSON.stringify(diagnostics), /untrusted|secret|idp-123|sa-456/u);
 });
 
 void test('malformed, refused, incomplete, and unsafe model responses fail closed', async () => {

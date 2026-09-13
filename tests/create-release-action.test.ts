@@ -10,6 +10,7 @@ import {
   run,
   validateGeneratedNotes,
   validateReleaseFacts,
+  type DiagnosticEvent,
   type ReleaseFacts,
   type ResponseClient,
   type WorkloadIdentityClientOptions,
@@ -65,14 +66,19 @@ interface RunOptions {
   factsContent?: string;
   factsInput?: string;
   modelError?: Error;
+  modelResponse?: unknown;
+  oidcError?: Error;
   omitInput?: ReleaseInputName;
   precreateBody?: boolean;
+  requestStatus?: number;
+  requestUrl?: string;
   unsetRunnerTemp?: boolean;
 }
 
 interface RunResult {
   body: string | undefined;
   clientCreated: boolean;
+  diagnostics: DiagnosticEvent[];
   exitCode: number | string | null | undefined;
   observedAudience: string;
   observedOptions: WorkloadIdentityClientOptions | undefined;
@@ -104,6 +110,7 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
   const originalStderrWrite = process.stderr.write.bind(process.stderr);
 
   let clientCreated = false;
+  const diagnostics: DiagnosticEvent[] = [];
   let observedAudience = '';
   let observedOptions: WorkloadIdentityClientOptions | undefined;
   let observedToken = '';
@@ -154,14 +161,20 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
           responses: {
             create: async () => {
               observedToken = await clientOptions.workloadIdentity.provider.getToken();
+              if (options.requestUrl) {
+                await clientOptions.fetch?.(options.requestUrl);
+              }
               if (options.modelError) {
                 throw options.modelError;
               }
-              return completedResponse(
-                JSON.stringify({
-                  description: 'This release improves delivery reliability.',
-                  highlights: ['Handles important release paths safely'],
-                }),
+              return (
+                options.modelResponse ??
+                completedResponse(
+                  JSON.stringify({
+                    description: 'This release improves delivery reliability.',
+                    highlights: ['Handles important release paths safely'],
+                  }),
+                )
               );
             },
           },
@@ -169,13 +182,19 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
       },
       getIDToken: (audience) => {
         observedAudience = audience;
+        if (options.oidcError) {
+          return Promise.reject(options.oidcError);
+        }
         return Promise.resolve('github-oidc-token-value');
       },
+      fetch: () => Promise.resolve(new Response(null, { status: options.requestStatus ?? 200 })),
+      reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     });
 
     return {
       body: process.exitCode === undefined ? await readFile(bodyPath, 'utf8') : undefined,
       clientCreated,
+      diagnostics,
       exitCode: process.exitCode,
       observedAudience,
       observedOptions,
@@ -200,11 +219,12 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
 }
 
 function assertRedacted(result: RunResult): void {
+  const diagnosticText = `${result.stderr}\n${JSON.stringify(result.diagnostics)}`;
   assert.doesNotMatch(
-    result.stderr,
+    diagnosticText,
     /openai-(?:audience|provider|service-account)-value|github-oidc-token-value|untrusted|release-session|diagnostics-/u,
   );
-  assert.ok(!result.stderr.includes(result.runnerTemp));
+  assert.ok(!diagnosticText.includes(result.runnerTemp));
 }
 
 void test('run reports safe diagnostics without changing action input lookup or exposing values', async (context) => {
@@ -219,6 +239,12 @@ void test('run reports safe diagnostics without changing action input lookup or 
     assert.equal(result.observedOptions?.workloadIdentity.provider.tokenType, 'jwt');
     assert.equal(result.observedAudience, 'openai-audience-value');
     assert.equal(result.observedToken, 'github-oidc-token-value');
+    assert.deepEqual(result.diagnostics, [
+      { stage: 'github-oidc-token', event: 'started' },
+      { stage: 'github-oidc-token', event: 'succeeded' },
+      { stage: 'openai-response-validation', event: 'started' },
+      { stage: 'openai-response-validation', event: 'succeeded' },
+    ]);
     assert.match(result.body ?? '', /^This release improves delivery reliability\./u);
   });
 
@@ -313,9 +339,86 @@ void test('run reports safe diagnostics without changing action input lookup or 
 
     assert.equal(result.clientCreated, true);
     assert.equal(result.exitCode, 1);
-    assert.equal(result.stderr, 'create-release: failed: category=model-generation reason=operation-failed\n');
+    assert.equal(
+      result.stderr,
+      'create-release: failed: category=model-generation reason=openai-response-request-failed\n',
+    );
     assertRedacted(result);
     assert.doesNotMatch(result.stderr, /model-output-secret-value/u);
+  });
+
+  await context.test('GitHub OIDC failures expose only their fixed stage-specific reason', async () => {
+    const result = await exerciseRun({
+      oidcError: new Error('github-oidc-token-value untrusted-context-secret-value'),
+    });
+
+    assert.equal(result.clientCreated, true);
+    assert.equal(result.exitCode, 1);
+    assert.equal(
+      result.stderr,
+      'create-release: failed: category=workload-identity reason=github-oidc-token-request-failed\n',
+    );
+    assert.deepEqual(result.diagnostics, [{ stage: 'github-oidc-token', event: 'started' }]);
+    assertRedacted(result);
+  });
+
+  await context.test('OpenAI token exchange failures retain only the HTTP status and fixed reason', async () => {
+    const result = await exerciseRun({
+      requestUrl: 'https://auth.openai.com/oauth/token',
+      requestStatus: 403,
+      modelError: new Error('openai-service-account-value token-exchange-secret-value'),
+    });
+
+    assert.equal(result.exitCode, 1);
+    assert.equal(
+      result.stderr,
+      'create-release: failed: category=workload-identity reason=openai-token-exchange-failed\n',
+    );
+    assert.deepEqual(result.diagnostics, [
+      { stage: 'github-oidc-token', event: 'started' },
+      { stage: 'github-oidc-token', event: 'succeeded' },
+      { stage: 'openai-token-exchange', event: 'started', attempt: 1 },
+      { stage: 'openai-token-exchange', event: 'http-response', attempt: 1, httpStatus: 403 },
+    ]);
+    assertRedacted(result);
+  });
+
+  await context.test('OpenAI Responses request failures retain only the HTTP status and fixed reason', async () => {
+    const result = await exerciseRun({
+      requestUrl: 'https://api.openai.com/v1/responses',
+      requestStatus: 429,
+      modelError: new Error('untrusted-context-secret-value rate-limit-detail'),
+    });
+
+    assert.equal(result.exitCode, 1);
+    assert.equal(
+      result.stderr,
+      'create-release: failed: category=model-generation reason=openai-response-request-failed\n',
+    );
+    assert.deepEqual(result.diagnostics.at(-1), {
+      stage: 'openai-response-request',
+      event: 'http-response',
+      attempt: 1,
+      httpStatus: 429,
+    });
+    assertRedacted(result);
+  });
+
+  await context.test('response validation failures expose neither response text nor validation details', async () => {
+    const result = await exerciseRun({
+      modelResponse: completedResponse('untrusted-model-output-secret-value'),
+    });
+
+    assert.equal(result.exitCode, 1);
+    assert.equal(
+      result.stderr,
+      'create-release: failed: category=model-generation reason=openai-response-validation-failed\n',
+    );
+    assert.deepEqual(result.diagnostics.at(-1), {
+      stage: 'openai-response-validation',
+      event: 'started',
+    });
+    assertRedacted(result);
   });
 
   await context.test('rendering failures expose only their operation category', async () => {

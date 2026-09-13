@@ -1,15 +1,20 @@
 import * as core from '@actions/core';
 import OpenAI from 'openai';
-import type {
-  GeneratedNotes,
-  OpenAIDependencies,
-  ResponseClient,
-  WorkloadIdentityClientOptions,
-  WorkloadIdentityInputs,
+import {
+  fail,
+  SafeActionFailure,
+  type DiagnosticEvent,
+  type DiagnosticReporter,
+  type GeneratedNotes,
+  type OpenAIDependencies,
+  type ResponseClient,
+  type WorkloadIdentityClientOptions,
+  type WorkloadIdentityInputs,
 } from './contracts.ts';
 import { validateGeneratedNotes } from './validation.ts';
 
 const MODEL = 'gpt-5.6-luna';
+const OPENAI_AUTH_ORIGIN = 'https://auth.openai.com';
 const RESPONSE_SCHEMA = {
   type: 'object',
   properties: {
@@ -76,12 +81,90 @@ function extractOutputText(response: unknown): string {
   return outputText.text;
 }
 
+type PendingFailure =
+  | { category: 'workload-identity'; reason: 'openai-token-exchange-failed' }
+  | {
+      category: 'model-generation';
+      reason: 'openai-client-initialization-failed' | 'openai-response-request-failed';
+    };
+
+function defaultDiagnosticReporter(diagnostic: DiagnosticEvent): void {
+  const attempt =
+    'attempt' in diagnostic &&
+    Number.isSafeInteger(diagnostic.attempt) &&
+    diagnostic.attempt >= 1 &&
+    diagnostic.attempt <= 100
+      ? ` attempt=${diagnostic.attempt}`
+      : '';
+  const httpStatus =
+    diagnostic.event === 'http-response' &&
+    Number.isInteger(diagnostic.httpStatus) &&
+    diagnostic.httpStatus >= 0 &&
+    diagnostic.httpStatus <= 999
+      ? ` http-status=${diagnostic.httpStatus}`
+      : '';
+  core.info(`create-release: diagnostic stage=${diagnostic.stage} event=${diagnostic.event}${attempt}${httpStatus}`);
+}
+
+function requestUrl(input: Parameters<typeof globalThis.fetch>[0]): string {
+  if (typeof input === 'string') {
+    return input;
+  }
+
+  if (input instanceof URL) {
+    return input.href;
+  }
+
+  return input.url;
+}
+
+function isTokenExchangeRequest(input: Parameters<typeof globalThis.fetch>[0]): boolean {
+  try {
+    return new URL(requestUrl(input)).origin === OPENAI_AUTH_ORIGIN;
+  } catch {
+    return false;
+  }
+}
+
+function createDiagnosticFetch(
+  baseFetch: typeof globalThis.fetch,
+  reportDiagnostic: DiagnosticReporter,
+  setPendingFailure: (failure: PendingFailure) => void,
+): typeof globalThis.fetch {
+  const attempts = new Map<'openai-token-exchange' | 'openai-response-request', number>();
+
+  return async (input, init) => {
+    const tokenExchange = isTokenExchangeRequest(input);
+    const stage = tokenExchange ? 'openai-token-exchange' : 'openai-response-request';
+    const attempt = (attempts.get(stage) ?? 0) + 1;
+    attempts.set(stage, attempt);
+    setPendingFailure(
+      tokenExchange
+        ? { category: 'workload-identity', reason: 'openai-token-exchange-failed' }
+        : { category: 'model-generation', reason: 'openai-response-request-failed' },
+    );
+    reportDiagnostic({ stage, event: 'started', attempt });
+
+    const response = await baseFetch(input, init);
+    reportDiagnostic({ stage, event: 'http-response', attempt, httpStatus: response.status });
+    return response;
+  };
+}
+
 export async function generateNotes(
   context: string,
   identity: WorkloadIdentityInputs,
   dependencies: OpenAIDependencies = {},
 ): Promise<GeneratedNotes> {
   const getIDToken = dependencies.getIDToken ?? ((audience: string) => core.getIDToken(audience));
+  const reportDiagnostic = dependencies.reportDiagnostic ?? defaultDiagnosticReporter;
+  let pendingFailure: PendingFailure = {
+    category: 'model-generation',
+    reason: 'openai-client-initialization-failed',
+  };
+  const diagnosticFetch = createDiagnosticFetch(dependencies.fetch ?? globalThis.fetch, reportDiagnostic, (failure) => {
+    pendingFailure = failure;
+  });
   const clientFactory =
     dependencies.clientFactory ??
     ((options: WorkloadIdentityClientOptions): ResponseClient => {
@@ -92,39 +175,70 @@ export async function generateNotes(
         },
       };
     });
-  const client = clientFactory({
-    apiKey: null,
-    workloadIdentity: {
-      identityProviderId: identity.identityProviderId,
-      serviceAccountId: identity.serviceAccountId,
-      provider: {
-        tokenType: 'jwt',
-        getToken: () => getIDToken(identity.audience),
+  let client: ResponseClient;
+
+  try {
+    client = clientFactory({
+      apiKey: null,
+      fetch: diagnosticFetch,
+      workloadIdentity: {
+        identityProviderId: identity.identityProviderId,
+        serviceAccountId: identity.serviceAccountId,
+        provider: {
+          tokenType: 'jwt',
+          getToken: async () => {
+            const previousFailure = pendingFailure;
+            reportDiagnostic({ stage: 'github-oidc-token', event: 'started' });
+
+            try {
+              const token = await getIDToken(identity.audience);
+              reportDiagnostic({ stage: 'github-oidc-token', event: 'succeeded' });
+              pendingFailure = previousFailure;
+              return token;
+            } catch {
+              fail({ category: 'workload-identity', reason: 'github-oidc-token-request-failed' });
+            }
+          },
+        },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (error instanceof SafeActionFailure) {
+      throw error;
+    }
+    fail(pendingFailure);
+  }
 
-  const response = await client.responses.create({
-    model: MODEL,
-    store: false,
-    tools: [],
-    reasoning: { effort: 'none' },
-    max_output_tokens: 800,
-    instructions: INSTRUCTIONS,
-    input: [{ role: 'user', content: context }],
-    text: { format: { type: 'json_schema', name: 'release_description', strict: true, schema: RESPONSE_SCHEMA } },
-  });
+  pendingFailure = { category: 'model-generation', reason: 'openai-response-request-failed' };
+  let response: unknown;
 
+  try {
+    response = await client.responses.create({
+      model: MODEL,
+      store: false,
+      tools: [],
+      reasoning: { effort: 'none' },
+      max_output_tokens: 800,
+      instructions: INSTRUCTIONS,
+      input: [{ role: 'user', content: context }],
+      text: { format: { type: 'json_schema', name: 'release_description', strict: true, schema: RESPONSE_SCHEMA } },
+    });
+  } catch (error) {
+    if (error instanceof SafeActionFailure) {
+      throw error;
+    }
+    fail(pendingFailure);
+  }
+
+  reportDiagnostic({ stage: 'openai-response-validation', event: 'started' });
   let parsed: unknown;
 
   try {
     parsed = JSON.parse(extractOutputText(response));
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new Error('OpenAI returned invalid JSON', { cause: error });
-    }
-    throw error;
+    const notes = validateGeneratedNotes(parsed);
+    reportDiagnostic({ stage: 'openai-response-validation', event: 'succeeded' });
+    return notes;
+  } catch {
+    fail({ category: 'model-generation', reason: 'openai-response-validation-failed' });
   }
-
-  return validateGeneratedNotes(parsed);
 }
