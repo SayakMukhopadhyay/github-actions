@@ -32338,6 +32338,10 @@ function validateReleaseFacts(value) {
 //#region actions/create-release/src/openai.ts
 const MODEL = "gpt-5.6-luna";
 const OPENAI_AUTH_ORIGIN = "https://auth.openai.com";
+const MAX_JWT_BYTES = 32768;
+const MAX_CLAIM_BYTES = 2048;
+const MAX_AUDIENCES = 16;
+const JWT_PART_PATTERN = /^[A-Za-z0-9_-]+$/u;
 const RESPONSE_SCHEMA = {
 	type: "object",
 	properties: {
@@ -32386,10 +32390,68 @@ function extractOutputText(response) {
 	if (!isRecord(outputText) || outputText.type !== "output_text" || typeof outputText.text !== "string") throw new Error("OpenAI response does not contain exactly one text result");
 	return outputText.text;
 }
+function escapeDiagnosticValue(value) {
+	return JSON.stringify(value).replaceAll("\u2028", "\\u2028").replaceAll("\u2029", "\\u2029");
+}
+function formatClaimValue(value) {
+	if (value === null) return "<absent>";
+	if (Array.isArray(value)) return `[${value.map(escapeDiagnosticValue).join(",")}]`;
+	return escapeDiagnosticValue(value);
+}
+function formatDiagnostic(diagnostic) {
+	const prefix = `create-release: diagnostic stage=${diagnostic.stage} event=${diagnostic.event}`;
+	if (diagnostic.stage === "github-oidc-token" && diagnostic.event === "claims") {
+		const claims = diagnostic.claims;
+		return `${prefix} iss=${formatClaimValue(claims.iss)} aud=${formatClaimValue(claims.aud)} sub=${formatClaimValue(claims.sub)} repository=${formatClaimValue(claims.repository)} environment=${formatClaimValue(claims.environment)} job_workflow_ref=${formatClaimValue(claims.job_workflow_ref)} workflow_ref=${formatClaimValue(claims.workflow_ref)} ref=${formatClaimValue(claims.ref)} sha=${formatClaimValue(claims.sha)}`;
+	}
+	return `${prefix}${"attempt" in diagnostic && Number.isSafeInteger(diagnostic.attempt) && diagnostic.attempt >= 1 && diagnostic.attempt <= 100 ? ` attempt=${diagnostic.attempt}` : ""}${diagnostic.event === "http-response" && Number.isInteger(diagnostic.httpStatus) && diagnostic.httpStatus >= 0 && diagnostic.httpStatus <= 999 ? ` http-status=${diagnostic.httpStatus}` : ""}`;
+}
 function defaultDiagnosticReporter(diagnostic) {
-	const attempt = "attempt" in diagnostic && Number.isSafeInteger(diagnostic.attempt) && diagnostic.attempt >= 1 && diagnostic.attempt <= 100 ? ` attempt=${diagnostic.attempt}` : "";
-	const httpStatus = diagnostic.event === "http-response" && Number.isInteger(diagnostic.httpStatus) && diagnostic.httpStatus >= 0 && diagnostic.httpStatus <= 999 ? ` http-status=${diagnostic.httpStatus}` : "";
-	info(`create-release: diagnostic stage=${diagnostic.stage} event=${diagnostic.event}${attempt}${httpStatus}`);
+	info(formatDiagnostic(diagnostic));
+}
+function assertDiagnosticClaim(value) {
+	if (value === void 0) return null;
+	if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > MAX_CLAIM_BYTES) throw new Error("invalid GitHub OIDC diagnostic claim");
+	return value;
+}
+function assertAudienceClaim(value) {
+	if (value === void 0) return null;
+	if (typeof value === "string") return assertDiagnosticClaim(value);
+	if (!isUnknownArray(value) || value.length > MAX_AUDIENCES) throw new Error("invalid GitHub OIDC audience claim");
+	const audiences = [];
+	for (const audience of value) {
+		if (typeof audience !== "string" || Buffer.byteLength(audience, "utf8") > MAX_CLAIM_BYTES) throw new Error("invalid GitHub OIDC audience claim");
+		audiences.push(audience);
+	}
+	return audiences;
+}
+function extractGitHubOidcClaimDiagnostics(token) {
+	try {
+		if (Buffer.byteLength(token, "utf8") > MAX_JWT_BYTES) throw new Error("GitHub OIDC token is too large");
+		const parts = token.split(".");
+		if (parts.length !== 3 || parts.some((part) => !JWT_PART_PATTERN.test(part) || Buffer.from(part, "base64url").toString("base64url") !== part)) throw new Error("GitHub OIDC token is malformed");
+		const encodedPayload = parts[1];
+		const payloadBytes = Buffer.from(encodedPayload, "base64url");
+		if (payloadBytes.toString("base64url") !== encodedPayload || payloadBytes.byteLength > MAX_JWT_BYTES) throw new Error("GitHub OIDC payload is malformed");
+		const payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(payloadBytes));
+		if (!isRecord(payload)) throw new Error("GitHub OIDC payload is malformed");
+		return {
+			iss: assertDiagnosticClaim(payload.iss),
+			aud: assertAudienceClaim(payload.aud),
+			sub: assertDiagnosticClaim(payload.sub),
+			repository: assertDiagnosticClaim(payload.repository),
+			environment: assertDiagnosticClaim(payload.environment),
+			job_workflow_ref: assertDiagnosticClaim(payload.job_workflow_ref),
+			workflow_ref: assertDiagnosticClaim(payload.workflow_ref),
+			ref: assertDiagnosticClaim(payload.ref),
+			sha: assertDiagnosticClaim(payload.sha)
+		};
+	} catch {
+		fail({
+			category: "workload-identity",
+			reason: "github-oidc-token-invalid"
+		});
+	}
 }
 function requestUrl(input) {
 	if (typeof input === "string") return input;
@@ -32462,20 +32524,27 @@ async function generateNotes(context, identity, dependencies = {}) {
 							stage: "github-oidc-token",
 							event: "started"
 						});
+						let token;
 						try {
-							const token = await getIDToken$1(identity.audience);
-							reportDiagnostic({
-								stage: "github-oidc-token",
-								event: "succeeded"
-							});
-							pendingFailure = previousFailure;
-							return token;
+							token = await getIDToken$1(identity.audience);
 						} catch {
 							fail({
 								category: "workload-identity",
 								reason: "github-oidc-token-request-failed"
 							});
 						}
+						const claims = extractGitHubOidcClaimDiagnostics(token);
+						reportDiagnostic({
+							stage: "github-oidc-token",
+							event: "claims",
+							claims
+						});
+						reportDiagnostic({
+							stage: "github-oidc-token",
+							event: "succeeded"
+						});
+						pendingFailure = previousFailure;
+						return token;
 					}
 				}
 			}
@@ -32640,6 +32709,6 @@ async function run(dependencies) {
 }
 if ((process.argv[1] === void 0 ? void 0 : pathToFileURL(resolve(process.argv[1])).href) === import.meta.url) await run();
 //#endregion
-export { SafeActionFailure, fail, generateNotes, readInputFile, renderReleaseBody, run, validateGeneratedNotes, validateInputFile, validateReleaseFacts };
+export { SafeActionFailure, extractGitHubOidcClaimDiagnostics, fail, formatDiagnostic, generateNotes, readInputFile, renderReleaseBody, run, validateGeneratedNotes, validateInputFile, validateReleaseFacts };
 
 //# sourceMappingURL=index.mjs.map

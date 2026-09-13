@@ -50,6 +50,19 @@ function completedResponse(text: string): unknown {
   };
 }
 
+const githubOidcClaims = {
+  iss: 'https://token.actions.githubusercontent.com',
+  aud: 'https://api.openai.com/v1',
+  sub: 'repo:Owner/Project:environment:production',
+  repository: 'Owner/Project',
+  environment: 'production',
+  job_workflow_ref: 'Owner/Project/.github/workflows/release.yaml@refs/heads/main',
+  workflow_ref: 'Owner/Project/.github/workflows/release.yaml@refs/heads/main',
+  ref: 'refs/heads/main',
+  sha: 'a'.repeat(40),
+};
+const githubOidcToken = `eyJhbGciOiJSUzI1NiJ9.${Buffer.from(JSON.stringify(githubOidcClaims)).toString('base64url')}.signature-secret`;
+
 const releaseInputNames = [
   'openai-wif-audience',
   'openai-identity-provider-id',
@@ -202,7 +215,7 @@ void test('the OpenAI request is fixed, stateless, tool-free, bounded, and schem
       responses: {
         create: async (request) => {
           observedRequest = request as Record<string, unknown>;
-          assert.equal(await options.workloadIdentity.provider.getToken(), 'github-oidc-token');
+          assert.equal(await options.workloadIdentity.provider.getToken(), githubOidcToken);
           return completedResponse(
             JSON.stringify({
               description: 'This release improves delivery reliability.',
@@ -225,7 +238,7 @@ void test('the OpenAI request is fixed, stateless, tool-free, bounded, and schem
       clientFactory,
       getIDToken: (audience) => {
         observedAudience = audience;
-        return Promise.resolve('github-oidc-token');
+        return Promise.resolve(githubOidcToken);
       },
     },
   );
@@ -283,7 +296,7 @@ void test('the real OpenAI client reports and classifies workload identity excha
       },
       {
         fetch,
-        getIDToken: () => Promise.resolve('github-oidc-token-secret'),
+        getIDToken: () => Promise.resolve(githubOidcToken),
         reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
       },
     ),
@@ -299,6 +312,7 @@ void test('the real OpenAI client reports and classifies workload identity excha
 
   assert.deepEqual(diagnostics, [
     { stage: 'github-oidc-token', event: 'started' },
+    { stage: 'github-oidc-token', event: 'claims', claims: githubOidcClaims },
     { stage: 'github-oidc-token', event: 'succeeded' },
     { stage: 'openai-token-exchange', event: 'started', attempt: 1 },
     { stage: 'openai-token-exchange', event: 'http-response', attempt: 1, httpStatus: 403 },
@@ -344,7 +358,7 @@ void test('the real OpenAI client distinguishes Responses API failures after a s
       },
       {
         fetch,
-        getIDToken: () => Promise.resolve('github-oidc-token-secret'),
+        getIDToken: () => Promise.resolve(githubOidcToken),
         reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
       },
     ),
@@ -360,6 +374,7 @@ void test('the real OpenAI client distinguishes Responses API failures after a s
 
   assert.deepEqual(diagnostics, [
     { stage: 'github-oidc-token', event: 'started' },
+    { stage: 'github-oidc-token', event: 'claims', claims: githubOidcClaims },
     { stage: 'github-oidc-token', event: 'succeeded' },
     { stage: 'openai-token-exchange', event: 'started', attempt: 1 },
     { stage: 'openai-token-exchange', event: 'http-response', attempt: 1, httpStatus: 200 },

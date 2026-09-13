@@ -49,6 +49,19 @@ function completedResponse(text: string): unknown {
   };
 }
 
+const githubOidcClaims = {
+  iss: 'https://token.actions.githubusercontent.com',
+  aud: 'openai-audience-value',
+  sub: 'repo:Owner/Project:environment:production',
+  repository: 'Owner/Project',
+  environment: 'production',
+  job_workflow_ref: 'Owner/Project/.github/workflows/release.yaml@refs/heads/main',
+  workflow_ref: 'Owner/Project/.github/workflows/release.yaml@refs/heads/main',
+  ref: 'refs/heads/main',
+  sha: 'a'.repeat(40),
+};
+const githubOidcToken = `eyJhbGciOiJSUzI1NiJ9.${Buffer.from(JSON.stringify(githubOidcClaims)).toString('base64url')}.signature-secret`;
+
 const releaseInputNames = [
   'openai-wif-audience',
   'openai-identity-provider-id',
@@ -68,6 +81,7 @@ interface RunOptions {
   modelError?: Error;
   modelResponse?: unknown;
   oidcError?: Error;
+  oidcToken?: string;
   omitInput?: ReleaseInputName;
   precreateBody?: boolean;
   requestStatus?: number;
@@ -185,7 +199,7 @@ async function exerciseRun(options: RunOptions = {}): Promise<RunResult> {
         if (options.oidcError) {
           return Promise.reject(options.oidcError);
         }
-        return Promise.resolve('github-oidc-token-value');
+        return Promise.resolve(options.oidcToken ?? githubOidcToken);
       },
       fetch: () => Promise.resolve(new Response(null, { status: options.requestStatus ?? 200 })),
       reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
@@ -222,7 +236,7 @@ function assertRedacted(result: RunResult): void {
   const diagnosticText = `${result.stderr}\n${JSON.stringify(result.diagnostics)}`;
   assert.doesNotMatch(
     diagnosticText,
-    /openai-(?:audience|provider|service-account)-value|github-oidc-token-value|untrusted|release-session|diagnostics-/u,
+    /openai-(?:provider|service-account)-value|signature-secret|untrusted|release-session|diagnostics-/u,
   );
   assert.ok(!diagnosticText.includes(result.runnerTemp));
 }
@@ -238,9 +252,10 @@ void test('run reports safe diagnostics without changing action input lookup or 
     assert.equal(result.observedOptions?.workloadIdentity.serviceAccountId, 'openai-service-account-value');
     assert.equal(result.observedOptions?.workloadIdentity.provider.tokenType, 'jwt');
     assert.equal(result.observedAudience, 'openai-audience-value');
-    assert.equal(result.observedToken, 'github-oidc-token-value');
+    assert.equal(result.observedToken, githubOidcToken);
     assert.deepEqual(result.diagnostics, [
       { stage: 'github-oidc-token', event: 'started' },
+      { stage: 'github-oidc-token', event: 'claims', claims: githubOidcClaims },
       { stage: 'github-oidc-token', event: 'succeeded' },
       { stage: 'openai-response-validation', event: 'started' },
       { stage: 'openai-response-validation', event: 'succeeded' },
@@ -362,6 +377,20 @@ void test('run reports safe diagnostics without changing action input lookup or 
     assertRedacted(result);
   });
 
+  await context.test('malformed GitHub OIDC tokens stop before exchange without exposing the token', async () => {
+    const result = await exerciseRun({ oidcToken: 'raw-oidc-token-secret' });
+
+    assert.equal(result.clientCreated, true);
+    assert.equal(result.exitCode, 1);
+    assert.equal(
+      result.stderr,
+      'create-release: failed: category=workload-identity reason=github-oidc-token-invalid\n',
+    );
+    assert.equal(result.observedToken, '');
+    assert.deepEqual(result.diagnostics, [{ stage: 'github-oidc-token', event: 'started' }]);
+    assert.doesNotMatch(`${result.stderr}\n${JSON.stringify(result.diagnostics)}`, /raw-oidc-token-secret/u);
+  });
+
   await context.test('OpenAI token exchange failures retain only the HTTP status and fixed reason', async () => {
     const result = await exerciseRun({
       requestUrl: 'https://auth.openai.com/oauth/token',
@@ -376,6 +405,7 @@ void test('run reports safe diagnostics without changing action input lookup or 
     );
     assert.deepEqual(result.diagnostics, [
       { stage: 'github-oidc-token', event: 'started' },
+      { stage: 'github-oidc-token', event: 'claims', claims: githubOidcClaims },
       { stage: 'github-oidc-token', event: 'succeeded' },
       { stage: 'openai-token-exchange', event: 'started', attempt: 1 },
       { stage: 'openai-token-exchange', event: 'http-response', attempt: 1, httpStatus: 403 },

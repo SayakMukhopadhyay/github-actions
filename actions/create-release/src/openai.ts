@@ -6,6 +6,7 @@ import {
   type DiagnosticEvent,
   type DiagnosticReporter,
   type GeneratedNotes,
+  type GitHubOidcClaimDiagnostics,
   type OpenAIDependencies,
   type ResponseClient,
   type WorkloadIdentityClientOptions,
@@ -15,6 +16,10 @@ import { validateGeneratedNotes } from './validation.ts';
 
 const MODEL = 'gpt-5.6-luna';
 const OPENAI_AUTH_ORIGIN = 'https://auth.openai.com';
+const MAX_JWT_BYTES = 32_768;
+const MAX_CLAIM_BYTES = 2_048;
+const MAX_AUDIENCES = 16;
+const JWT_PART_PATTERN = /^[A-Za-z0-9_-]+$/u;
 const RESPONSE_SCHEMA = {
   type: 'object',
   properties: {
@@ -88,7 +93,30 @@ type PendingFailure =
       reason: 'openai-client-initialization-failed' | 'openai-response-request-failed';
     };
 
-function defaultDiagnosticReporter(diagnostic: DiagnosticEvent): void {
+function escapeDiagnosticValue(value: string): string {
+  return JSON.stringify(value).replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
+}
+
+function formatClaimValue(value: string | string[] | null): string {
+  if (value === null) {
+    return '<absent>';
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map(escapeDiagnosticValue).join(',')}]`;
+  }
+
+  return escapeDiagnosticValue(value);
+}
+
+export function formatDiagnostic(diagnostic: DiagnosticEvent): string {
+  const prefix = `create-release: diagnostic stage=${diagnostic.stage} event=${diagnostic.event}`;
+
+  if (diagnostic.stage === 'github-oidc-token' && diagnostic.event === 'claims') {
+    const claims = diagnostic.claims;
+    return `${prefix} iss=${formatClaimValue(claims.iss)} aud=${formatClaimValue(claims.aud)} sub=${formatClaimValue(claims.sub)} repository=${formatClaimValue(claims.repository)} environment=${formatClaimValue(claims.environment)} job_workflow_ref=${formatClaimValue(claims.job_workflow_ref)} workflow_ref=${formatClaimValue(claims.workflow_ref)} ref=${formatClaimValue(claims.ref)} sha=${formatClaimValue(claims.sha)}`;
+  }
+
   const attempt =
     'attempt' in diagnostic &&
     Number.isSafeInteger(diagnostic.attempt) &&
@@ -103,7 +131,90 @@ function defaultDiagnosticReporter(diagnostic: DiagnosticEvent): void {
     diagnostic.httpStatus <= 999
       ? ` http-status=${diagnostic.httpStatus}`
       : '';
-  core.info(`create-release: diagnostic stage=${diagnostic.stage} event=${diagnostic.event}${attempt}${httpStatus}`);
+  return `${prefix}${attempt}${httpStatus}`;
+}
+
+function defaultDiagnosticReporter(diagnostic: DiagnosticEvent): void {
+  core.info(formatDiagnostic(diagnostic));
+}
+
+function assertDiagnosticClaim(value: unknown): string | null {
+  if (value === undefined) {
+    return null;
+  }
+
+  if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > MAX_CLAIM_BYTES) {
+    throw new Error('invalid GitHub OIDC diagnostic claim');
+  }
+
+  return value;
+}
+
+function assertAudienceClaim(value: unknown): string | string[] | null {
+  if (value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    return assertDiagnosticClaim(value);
+  }
+
+  if (!isUnknownArray(value) || value.length > MAX_AUDIENCES) {
+    throw new Error('invalid GitHub OIDC audience claim');
+  }
+
+  const audiences: string[] = [];
+  for (const audience of value) {
+    if (typeof audience !== 'string' || Buffer.byteLength(audience, 'utf8') > MAX_CLAIM_BYTES) {
+      throw new Error('invalid GitHub OIDC audience claim');
+    }
+    audiences.push(audience);
+  }
+
+  return audiences;
+}
+
+export function extractGitHubOidcClaimDiagnostics(token: string): GitHubOidcClaimDiagnostics {
+  try {
+    if (Buffer.byteLength(token, 'utf8') > MAX_JWT_BYTES) {
+      throw new Error('GitHub OIDC token is too large');
+    }
+
+    const parts = token.split('.');
+    if (
+      parts.length !== 3 ||
+      parts.some(
+        (part) => !JWT_PART_PATTERN.test(part) || Buffer.from(part, 'base64url').toString('base64url') !== part,
+      )
+    ) {
+      throw new Error('GitHub OIDC token is malformed');
+    }
+
+    const encodedPayload = parts[1];
+    const payloadBytes = Buffer.from(encodedPayload, 'base64url');
+    if (payloadBytes.toString('base64url') !== encodedPayload || payloadBytes.byteLength > MAX_JWT_BYTES) {
+      throw new Error('GitHub OIDC payload is malformed');
+    }
+
+    const payload = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(payloadBytes)) as unknown;
+    if (!isRecord(payload)) {
+      throw new Error('GitHub OIDC payload is malformed');
+    }
+
+    return {
+      iss: assertDiagnosticClaim(payload.iss),
+      aud: assertAudienceClaim(payload.aud),
+      sub: assertDiagnosticClaim(payload.sub),
+      repository: assertDiagnosticClaim(payload.repository),
+      environment: assertDiagnosticClaim(payload.environment),
+      job_workflow_ref: assertDiagnosticClaim(payload.job_workflow_ref),
+      workflow_ref: assertDiagnosticClaim(payload.workflow_ref),
+      ref: assertDiagnosticClaim(payload.ref),
+      sha: assertDiagnosticClaim(payload.sha),
+    };
+  } catch {
+    fail({ category: 'workload-identity', reason: 'github-oidc-token-invalid' });
+  }
 }
 
 function requestUrl(input: Parameters<typeof globalThis.fetch>[0]): string {
@@ -190,14 +301,18 @@ export async function generateNotes(
             const previousFailure = pendingFailure;
             reportDiagnostic({ stage: 'github-oidc-token', event: 'started' });
 
+            let token: string;
             try {
-              const token = await getIDToken(identity.audience);
-              reportDiagnostic({ stage: 'github-oidc-token', event: 'succeeded' });
-              pendingFailure = previousFailure;
-              return token;
+              token = await getIDToken(identity.audience);
             } catch {
               fail({ category: 'workload-identity', reason: 'github-oidc-token-request-failed' });
             }
+
+            const claims = extractGitHubOidcClaimDiagnostics(token);
+            reportDiagnostic({ stage: 'github-oidc-token', event: 'claims', claims });
+            reportDiagnostic({ stage: 'github-oidc-token', event: 'succeeded' });
+            pendingFailure = previousFailure;
+            return token;
           },
         },
       },

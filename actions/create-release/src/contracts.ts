@@ -46,10 +46,22 @@ export interface WorkloadIdentityClientOptions {
 
 export type ClientFactory = (options: WorkloadIdentityClientOptions) => ResponseClient;
 export type IDTokenProvider = (audience: string) => Promise<string>;
+export interface GitHubOidcClaimDiagnostics {
+  iss: string | null;
+  aud: string | string[] | null;
+  sub: string | null;
+  repository: string | null;
+  environment: string | null;
+  job_workflow_ref: string | null;
+  workflow_ref: string | null;
+  ref: string | null;
+  sha: string | null;
+}
 export type DiagnosticStage =
   'github-oidc-token' | 'openai-token-exchange' | 'openai-response-request' | 'openai-response-validation';
 export type DiagnosticEvent =
   | { stage: 'github-oidc-token' | 'openai-response-validation'; event: 'started' | 'succeeded' }
+  | { stage: 'github-oidc-token'; event: 'claims'; claims: GitHubOidcClaimDiagnostics }
   | { stage: 'openai-token-exchange' | 'openai-response-request'; event: 'started'; attempt: number }
   | {
       stage: 'openai-token-exchange' | 'openai-response-request';
@@ -76,7 +88,8 @@ export type InputFileRole = 'context-file' | 'facts-file' | 'body-file';
 export type OperationFailureCategory = 'model-generation' | 'rendering' | 'output-write';
 export type ModelGenerationFailureReason =
   'openai-client-initialization-failed' | 'openai-response-request-failed' | 'openai-response-validation-failed';
-export type WorkloadIdentityFailureReason = 'github-oidc-token-request-failed' | 'openai-token-exchange-failed';
+export type WorkloadIdentityFailureReason =
+  'github-oidc-token-request-failed' | 'github-oidc-token-invalid' | 'openai-token-exchange-failed';
 
 export type SafeFailureDiagnostic =
   | { category: 'input-validation'; reason: 'missing-required-input'; input: RequiredInputName }
