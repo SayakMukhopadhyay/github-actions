@@ -2,8 +2,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Import-Module (Join-Path $PSScriptRoot 'ActionRuntime.psm1') -Force
-Import-Module (Join-Path $PSScriptRoot 'OciArtifactProbe.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'ActionRuntime.psm1')
+Import-Module (Join-Path $PSScriptRoot 'OciArtifactProbe.psm1')
 
 function Resolve-ContainerImageName {
     [CmdletBinding()]

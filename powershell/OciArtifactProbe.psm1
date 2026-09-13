@@ -2,7 +2,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Import-Module (Join-Path $PSScriptRoot 'ActionRuntime.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'ActionRuntime.psm1')
 
 function Invoke-OciArtifactProbe {
     [CmdletBinding()]
@@ -20,7 +20,26 @@ function Invoke-OciArtifactProbe {
     }
 
     $diagnostic = "$($result.StandardError)`n$($result.StandardOutput)"
-    if ($diagnostic -match '(?i)(?:^|[^a-z_])(?:manifest|name)[ _]unknown(?:[^a-z_]|$)') {
+    $isExactDockerReferenceAbsent = $false
+    $isDockerImageInspection = (
+        $FilePath -eq 'docker' -and
+        $ArgumentList.Count -eq 6 -and
+        $ArgumentList[0] -eq 'buildx' -and
+        $ArgumentList[1] -eq 'imagetools' -and
+        $ArgumentList[2] -eq 'inspect' -and
+        $ArgumentList[3] -eq '--format' -and
+        $ArgumentList[4] -eq '{{json .Manifest}}'
+    )
+    if ($isDockerImageInspection) {
+        $referencePattern = [regex]::Escape($ArgumentList[-1])
+        $isExactDockerReferenceAbsent = (
+            $diagnostic -match "(?im)^ERROR:\s+${referencePattern}:\s+not found\s*$"
+        )
+    }
+    if (
+        $diagnostic -match '(?i)(?:^|[^a-z_])(?:manifest|name)[ _]unknown(?:[^a-z_]|$)' -or
+        $isExactDockerReferenceAbsent
+    ) {
         return [pscustomobject]@{
             Exists         = $false
             StandardOutput = ''

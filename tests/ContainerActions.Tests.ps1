@@ -214,3 +214,23 @@ Describe 'Container action preparation' {
         { Invoke-ContainerPromotion } | Should -Throw '*docker failed*'
     }
 }
+
+Describe 'Container action entrypoints' {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1') -Force
+    }
+
+    It 'preserves the original probe failure in the GitHub annotation' {
+        $entrypoint = Join-Path $PSScriptRoot '..' 'container-build-push' 'probe-image.ps1'
+        $result = Invoke-NativeProcess pwsh @('-NoProfile', '-File', $entrypoint) `
+            -Environment @{
+            IMAGE_REFERENCE = ''
+            GITHUB_OUTPUT   = Join-Path $TestDrive 'entrypoint-output'
+        } -RawOutput -AllowFailure
+
+        $diagnostic = "$($result.StandardOutput)`n$($result.StandardError)"
+        $result.ExitCode | Should -Be 1
+        $diagnostic | Should -Match '::error::image-reference must be a non-empty single-line value'
+        $diagnostic | Should -Not -Match "The term 'Write-GitHubAnnotation' is not recognized"
+    }
+}

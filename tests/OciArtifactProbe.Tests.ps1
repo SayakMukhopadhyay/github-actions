@@ -37,6 +37,61 @@ Describe 'OCI artifact existence probe' {
         $result.Exists | Should -BeFalse
     }
 
+    It 'treats Buildx exact-reference not-found output as absent' {
+        $reference = 'ghcr.io/kode-blox/golfs:build-41abc3e2c2edd0099b5e7b8070d7b86a9da9fea9'
+        Mock Invoke-NativeProcess -ModuleName OciArtifactProbe {
+            [pscustomobject]@{
+                ExitCode       = 1
+                StandardOutput = ''
+                StandardError  = "ERROR: ${reference}: not found"
+            }
+        }
+
+        $result = Invoke-OciArtifactProbe docker @(
+            'buildx'
+            'imagetools'
+            'inspect'
+            '--format'
+            '{{json .Manifest}}'
+            $reference
+        )
+
+        $result.Exists | Should -BeFalse
+    }
+
+    It 'fails closed when Buildx reports not found for a different reference' {
+        Mock Invoke-NativeProcess -ModuleName OciArtifactProbe {
+            [pscustomobject]@{
+                ExitCode       = 1
+                StandardOutput = ''
+                StandardError  = 'ERROR: ghcr.io/owner/other:tag: not found'
+            }
+        }
+
+        { Invoke-OciArtifactProbe docker @(
+                'buildx'
+                'imagetools'
+                'inspect'
+                '--format'
+                '{{json .Manifest}}'
+                'ghcr.io/owner/repository:tag'
+            ) } | Should -Throw '*OCI artifact probe failed*'
+    }
+
+    It 'fails closed when another Docker command reports the exact reference as not found' {
+        $reference = 'ghcr.io/owner/repository:tag'
+        Mock Invoke-NativeProcess -ModuleName OciArtifactProbe {
+            [pscustomobject]@{
+                ExitCode       = 1
+                StandardOutput = ''
+                StandardError  = "ERROR: ${reference}: not found"
+            }
+        }
+
+        { Invoke-OciArtifactProbe docker @('pull', $reference) } |
+            Should -Throw '*OCI artifact probe failed*'
+    }
+
     It 'fails closed for authentication, network, and invalid-reference errors' -ForEach @(
         'unauthorized: authentication required'
         'dial tcp: lookup example.invalid: no such host'
