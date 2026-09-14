@@ -12,7 +12,7 @@ import {
   type WorkloadIdentityClientOptions,
   type WorkloadIdentityInputs,
 } from './contracts.ts';
-import { validateGeneratedNotes } from './validation.ts';
+import { GeneratedNotesValidationError, validateGeneratedNotes } from './validation.ts';
 
 const MODEL = 'gpt-5.6-luna';
 const OPENAI_AUTH_ORIGIN = 'https://auth.openai.com';
@@ -48,42 +48,34 @@ function isUnknownArray(value: unknown): value is unknown[] {
   return Array.isArray(value);
 }
 
+function containsRefusal(output: unknown[]): boolean {
+  return output.some((item) => {
+    if (!isRecord(item)) {
+      return false;
+    }
+
+    if (item.type === 'refusal') {
+      return true;
+    }
+
+    return isUnknownArray(item.content) && item.content.some((part) => isRecord(part) && part.type === 'refusal');
+  });
+}
+
 function extractOutputText(response: unknown): string {
   if (!isRecord(response) || response.status !== 'completed' || !isUnknownArray(response.output)) {
-    throw new Error('OpenAI response is incomplete or malformed');
+    fail({ category: 'model-generation', reason: 'openai-response-incomplete' });
   }
 
-  if (response.output.length !== 1) {
-    throw new Error('OpenAI response does not contain one completed assistant message');
+  if (containsRefusal(response.output)) {
+    fail({ category: 'model-generation', reason: 'openai-response-refused' });
   }
 
-  const message = response.output[0];
-
-  if (
-    !isRecord(message) ||
-    message.type !== 'message' ||
-    message.role !== 'assistant' ||
-    message.status !== 'completed' ||
-    !isUnknownArray(message.content)
-  ) {
-    throw new Error('OpenAI response does not contain one completed assistant message');
+  if (typeof response.output_text !== 'string' || response.output_text.trim() === '') {
+    fail({ category: 'model-generation', reason: 'openai-response-output-text-missing' });
   }
 
-  if (message.content.some((part) => isRecord(part) && part.type === 'refusal')) {
-    throw new Error('OpenAI refused the release-note request');
-  }
-
-  if (message.content.length !== 1) {
-    throw new Error('OpenAI response does not contain exactly one text result');
-  }
-
-  const outputText = message.content[0];
-
-  if (!isRecord(outputText) || outputText.type !== 'output_text' || typeof outputText.text !== 'string') {
-    throw new Error('OpenAI response does not contain exactly one text result');
-  }
-
-  return outputText.text;
+  return response.output_text;
 }
 
 type PendingFailure =
@@ -346,14 +338,25 @@ export async function generateNotes(
   }
 
   reportDiagnostic({ stage: 'openai-response-validation', event: 'started' });
+  const outputText = extractOutputText(response);
   let parsed: unknown;
 
   try {
-    parsed = JSON.parse(extractOutputText(response));
-    const notes = validateGeneratedNotes(parsed);
-    reportDiagnostic({ stage: 'openai-response-validation', event: 'succeeded' });
-    return notes;
+    parsed = JSON.parse(outputText);
   } catch {
-    fail({ category: 'model-generation', reason: 'openai-response-validation-failed' });
+    fail({ category: 'model-generation', reason: 'openai-response-json-invalid' });
   }
+
+  let notes: GeneratedNotes;
+  try {
+    notes = validateGeneratedNotes(parsed);
+  } catch (error) {
+    if (error instanceof GeneratedNotesValidationError && error.issue === 'disallowed-reference-content') {
+      fail({ category: 'model-generation', reason: 'openai-response-reference-content-disallowed' });
+    }
+    fail({ category: 'model-generation', reason: 'openai-response-notes-invalid' });
+  }
+
+  reportDiagnostic({ stage: 'openai-response-validation', event: 'succeeded' });
+  return notes;
 }

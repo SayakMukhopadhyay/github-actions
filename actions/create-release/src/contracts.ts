@@ -87,7 +87,14 @@ export type RequiredInputName =
 export type InputFileRole = 'context-file' | 'facts-file' | 'body-file';
 export type OperationFailureCategory = 'model-generation' | 'rendering' | 'output-write';
 export type ModelGenerationFailureReason =
-  'openai-client-initialization-failed' | 'openai-response-request-failed' | 'openai-response-validation-failed';
+  | 'openai-client-initialization-failed'
+  | 'openai-response-request-failed'
+  | 'openai-response-incomplete'
+  | 'openai-response-refused'
+  | 'openai-response-output-text-missing'
+  | 'openai-response-json-invalid'
+  | 'openai-response-notes-invalid'
+  | 'openai-response-reference-content-disallowed';
 export type WorkloadIdentityFailureReason =
   'github-oidc-token-request-failed' | 'github-oidc-token-invalid' | 'openai-token-exchange-failed';
 

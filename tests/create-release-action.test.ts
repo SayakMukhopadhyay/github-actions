@@ -46,6 +46,7 @@ function completedResponse(text: string): unknown {
         content: [{ type: 'output_text', text }],
       },
     ],
+    output_text: text,
   };
 }
 
@@ -434,21 +435,68 @@ void test('run reports safe diagnostics without changing action input lookup or 
     assertRedacted(result);
   });
 
-  await context.test('response validation failures expose neither response text nor validation details', async () => {
-    const result = await exerciseRun({
-      modelResponse: completedResponse('untrusted-model-output-secret-value'),
-    });
+  await context.test('response validation failures expose only granular fixed reasons', async (validationContext) => {
+    const cases = [
+      {
+        name: 'incomplete response',
+        response: { status: 'incomplete', output: [], output_text: 'untrusted-model-output-secret-value' },
+        reason: 'openai-response-incomplete',
+      },
+      {
+        name: 'refusal',
+        response: {
+          status: 'completed',
+          output_text: '{"description":"Valid","highlights":["Safe"]}',
+          output: [
+            { type: 'reasoning', id: 'reasoning-1', summary: [] },
+            {
+              type: 'message',
+              content: [{ type: 'refusal', refusal: 'untrusted-model-output-secret-value' }],
+            },
+          ],
+        },
+        reason: 'openai-response-refused',
+      },
+      {
+        name: 'missing output text',
+        response: { status: 'completed', output: [] },
+        reason: 'openai-response-output-text-missing',
+      },
+      {
+        name: 'invalid JSON',
+        response: completedResponse('untrusted-model-output-secret-value'),
+        reason: 'openai-response-json-invalid',
+      },
+      {
+        name: 'invalid generated notes',
+        response: completedResponse(JSON.stringify({ description: 'untrusted-model-output-secret-value' })),
+        reason: 'openai-response-notes-invalid',
+      },
+      {
+        name: 'disallowed reference content',
+        response: completedResponse(
+          JSON.stringify({
+            description: 'See https://untrusted-model-output-secret-value.example',
+            highlights: ['Unsafe output'],
+          }),
+        ),
+        reason: 'openai-response-reference-content-disallowed',
+      },
+    ] as const;
 
-    assert.equal(result.exitCode, 1);
-    assert.equal(
-      result.stderr,
-      'create-release: failed: category=model-generation reason=openai-response-validation-failed\n',
-    );
-    assert.deepEqual(result.diagnostics.at(-1), {
-      stage: 'openai-response-validation',
-      event: 'started',
-    });
-    assertRedacted(result);
+    for (const failureCase of cases) {
+      await validationContext.test(failureCase.name, async () => {
+        const result = await exerciseRun({ modelResponse: failureCase.response });
+
+        assert.equal(result.exitCode, 1);
+        assert.equal(result.stderr, `create-release: failed: category=model-generation reason=${failureCase.reason}\n`);
+        assert.deepEqual(result.diagnostics.at(-1), {
+          stage: 'openai-response-validation',
+          event: 'started',
+        });
+        assertRedacted(result);
+      });
+    }
   });
 
   await context.test('rendering failures expose only their operation category', async () => {

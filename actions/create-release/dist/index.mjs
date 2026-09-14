@@ -32256,6 +32256,17 @@ const MAX_REPOSITORY_LENGTH = 256;
 const MAX_SERVER_URL_LENGTH = 255;
 const MAX_TAG_NAME_LENGTH = 255;
 const unsafeGeneratedText = /https?:\/\/|www\.|\[[^\]]+\]\([^)]*\)|<[^>]+>|`|(^|[^\p{L}\p{N}_])v?\d+\.\d+\.\d+([^\p{L}\p{N}_]|$)|\b[0-9a-f]{7,64}\b|(^|\s)[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.:/-]+|(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu;
+var GeneratedNotesValidationError = class extends Error {
+	issue;
+	constructor(issue) {
+		super("generated release notes are invalid");
+		this.name = "GeneratedNotesValidationError";
+		this.issue = issue;
+	}
+};
+function failGeneratedNotesValidation(issue) {
+	throw new GeneratedNotesValidationError(issue);
+}
 function isRecord$1(value) {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -32276,12 +32287,16 @@ function assertExactKeys(value, expected) {
 	if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) throw new Error("object contains unexpected fields");
 }
 function validateGeneratedNotes(value) {
-	if (!isRecord$1(value)) throw new Error("release notes must be an object");
-	assertExactKeys(value, ["description", "highlights"]);
-	if (!isSafeLine(value.description, 1200)) throw new Error("release description is invalid");
-	if (!Array.isArray(value.highlights) || value.highlights.length < 1 || value.highlights.length > 6) throw new Error("release highlights are invalid");
-	if (!value.highlights.every((highlight) => isSafeLine(highlight, 240))) throw new Error("release highlight is invalid");
-	if (unsafeGeneratedText.test([value.description, ...value.highlights].join("\n"))) throw new Error("release notes contain disallowed non-descriptive content");
+	if (!isRecord$1(value)) failGeneratedNotesValidation("invalid-structure");
+	try {
+		assertExactKeys(value, ["description", "highlights"]);
+	} catch {
+		failGeneratedNotesValidation("invalid-structure");
+	}
+	if (!isSafeLine(value.description, 1200)) failGeneratedNotesValidation("invalid-structure");
+	if (!Array.isArray(value.highlights) || value.highlights.length < 1 || value.highlights.length > 6) failGeneratedNotesValidation("invalid-structure");
+	if (!value.highlights.every((highlight) => isSafeLine(highlight, 240))) failGeneratedNotesValidation("invalid-structure");
+	if (unsafeGeneratedText.test([value.description, ...value.highlights].join("\n"))) failGeneratedNotesValidation("disallowed-reference-content");
 	return {
 		description: value.description,
 		highlights: value.highlights
@@ -32379,16 +32394,27 @@ function isRecord(value) {
 function isUnknownArray(value) {
 	return Array.isArray(value);
 }
+function containsRefusal(output) {
+	return output.some((item) => {
+		if (!isRecord(item)) return false;
+		if (item.type === "refusal") return true;
+		return isUnknownArray(item.content) && item.content.some((part) => isRecord(part) && part.type === "refusal");
+	});
+}
 function extractOutputText(response) {
-	if (!isRecord(response) || response.status !== "completed" || !isUnknownArray(response.output)) throw new Error("OpenAI response is incomplete or malformed");
-	if (response.output.length !== 1) throw new Error("OpenAI response does not contain one completed assistant message");
-	const message = response.output[0];
-	if (!isRecord(message) || message.type !== "message" || message.role !== "assistant" || message.status !== "completed" || !isUnknownArray(message.content)) throw new Error("OpenAI response does not contain one completed assistant message");
-	if (message.content.some((part) => isRecord(part) && part.type === "refusal")) throw new Error("OpenAI refused the release-note request");
-	if (message.content.length !== 1) throw new Error("OpenAI response does not contain exactly one text result");
-	const outputText = message.content[0];
-	if (!isRecord(outputText) || outputText.type !== "output_text" || typeof outputText.text !== "string") throw new Error("OpenAI response does not contain exactly one text result");
-	return outputText.text;
+	if (!isRecord(response) || response.status !== "completed" || !isUnknownArray(response.output)) fail({
+		category: "model-generation",
+		reason: "openai-response-incomplete"
+	});
+	if (containsRefusal(response.output)) fail({
+		category: "model-generation",
+		reason: "openai-response-refused"
+	});
+	if (typeof response.output_text !== "string" || response.output_text.trim() === "") fail({
+		category: "model-generation",
+		reason: "openai-response-output-text-missing"
+	});
+	return response.output_text;
 }
 function escapeDiagnosticValue(value) {
 	return JSON.stringify(value).replaceAll("\u2028", "\\u2028").replaceAll("\u2029", "\\u2029");
@@ -32585,21 +32611,34 @@ async function generateNotes(context, identity, dependencies = {}) {
 		stage: "openai-response-validation",
 		event: "started"
 	});
+	const outputText = extractOutputText(response);
 	let parsed;
 	try {
-		parsed = JSON.parse(extractOutputText(response));
-		const notes = validateGeneratedNotes(parsed);
-		reportDiagnostic({
-			stage: "openai-response-validation",
-			event: "succeeded"
-		});
-		return notes;
+		parsed = JSON.parse(outputText);
 	} catch {
 		fail({
 			category: "model-generation",
-			reason: "openai-response-validation-failed"
+			reason: "openai-response-json-invalid"
 		});
 	}
+	let notes;
+	try {
+		notes = validateGeneratedNotes(parsed);
+	} catch (error) {
+		if (error instanceof GeneratedNotesValidationError && error.issue === "disallowed-reference-content") fail({
+			category: "model-generation",
+			reason: "openai-response-reference-content-disallowed"
+		});
+		fail({
+			category: "model-generation",
+			reason: "openai-response-notes-invalid"
+		});
+	}
+	reportDiagnostic({
+		stage: "openai-response-validation",
+		event: "succeeded"
+	});
+	return notes;
 }
 //#endregion
 //#region actions/create-release/src/render.ts
@@ -32709,6 +32748,6 @@ async function run(dependencies) {
 }
 if ((process.argv[1] === void 0 ? void 0 : pathToFileURL(resolve(process.argv[1])).href) === import.meta.url) await run();
 //#endregion
-export { SafeActionFailure, extractGitHubOidcClaimDiagnostics, fail, formatDiagnostic, generateNotes, readInputFile, renderReleaseBody, run, validateGeneratedNotes, validateInputFile, validateReleaseFacts };
+export { GeneratedNotesValidationError, SafeActionFailure, extractGitHubOidcClaimDiagnostics, fail, formatDiagnostic, generateNotes, readInputFile, renderReleaseBody, run, validateGeneratedNotes, validateInputFile, validateReleaseFacts };
 
 //# sourceMappingURL=index.mjs.map

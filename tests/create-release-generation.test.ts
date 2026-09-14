@@ -36,10 +36,11 @@ const facts: ReleaseFacts = {
   omittedCommitCount: 0,
 };
 
-function completedResponse(text: string): unknown {
+function completedResponse(text: string, additionalOutput: unknown[] = []): unknown {
   return {
     status: 'completed',
     output: [
+      ...additionalOutput,
       {
         type: 'message',
         role: 'assistant',
@@ -47,6 +48,7 @@ function completedResponse(text: string): unknown {
         content: [{ type: 'output_text', text }],
       },
     ],
+    output_text: text,
   };
 }
 
@@ -221,6 +223,7 @@ void test('the OpenAI request is fixed, stateless, tool-free, bounded, and schem
               description: 'This release improves delivery reliability.',
               highlights: ['Handles important release paths more safely'],
             }),
+            [{ type: 'reasoning', id: 'reasoning-1', summary: [] }],
           );
         },
       },
@@ -388,56 +391,103 @@ void test('the real OpenAI client distinguishes Responses API failures after a s
   assert.doesNotMatch(JSON.stringify(diagnostics), /untrusted|secret|idp-123|sa-456/u);
 });
 
-void test('malformed, refused, incomplete, and unsafe model responses fail closed', async () => {
-  const responses: unknown[] = [
-    { status: 'incomplete', output: [] },
+void test('response validation failures use granular secret-safe reason codes', async (context) => {
+  const validText = JSON.stringify({ description: 'Valid description', highlights: ['Safe highlight'] });
+  const cases = [
     {
-      status: 'completed',
-      output: [
-        {
-          type: 'message',
-          role: 'assistant',
-          status: 'completed',
-          content: [{ type: 'output_text', text: '{"description":"Valid","highlights":["Safe"]}' }],
-        },
-        { type: 'unexpected_output' },
-      ],
+      name: 'non-completed response',
+      response: { status: 'incomplete', output: [], output_text: 'untrusted-model-output-secret-value' },
+      reason: 'openai-response-incomplete',
     },
     {
-      status: 'completed',
-      output: [
-        {
-          type: 'message',
-          role: 'assistant',
-          status: 'completed',
-          content: [{ type: 'refusal', refusal: 'No' }],
-        },
-      ],
+      name: 'refusal in an additional output item',
+      response: {
+        status: 'completed',
+        output_text: validText,
+        output: [
+          { type: 'reasoning', id: 'reasoning-1', summary: [] },
+          {
+            type: 'message',
+            role: 'assistant',
+            status: 'completed',
+            content: [{ type: 'output_text', text: validText }],
+          },
+          {
+            type: 'message',
+            role: 'assistant',
+            status: 'completed',
+            content: [{ type: 'refusal', refusal: 'untrusted-model-output-secret-value' }],
+          },
+        ],
+      },
+      reason: 'openai-response-refused',
     },
-    completedResponse('not JSON'),
-    completedResponse(JSON.stringify({ description: 'Missing highlights' })),
-    completedResponse(
-      JSON.stringify({
-        description: 'Download v9.9.9 at https://evil.example',
-        highlights: ['Unsafe output'],
-      }),
-    ),
-  ];
-
-  for (const response of responses) {
-    await assert.rejects(
-      generateNotes(
-        'context',
-        {
-          audience: 'https://api.openai.com/v1',
-          identityProviderId: 'idp-123',
-          serviceAccountId: 'sa-456',
-        },
-        {
-          clientFactory: () => ({ responses: { create: () => Promise.resolve(response) } }),
-        },
+    {
+      name: 'missing output_text',
+      response: { status: 'completed', output: [{ type: 'reasoning', id: 'reasoning-1', summary: [] }] },
+      reason: 'openai-response-output-text-missing',
+    },
+    {
+      name: 'blank output_text',
+      response: { status: 'completed', output: [], output_text: '  \n  ' },
+      reason: 'openai-response-output-text-missing',
+    },
+    {
+      name: 'invalid JSON',
+      response: completedResponse('untrusted-model-output-secret-value'),
+      reason: 'openai-response-json-invalid',
+    },
+    {
+      name: 'invalid generated-note shape',
+      response: completedResponse(JSON.stringify({ description: 'Missing highlights' })),
+      reason: 'openai-response-notes-invalid',
+    },
+    {
+      name: 'invalid generated-note line',
+      response: completedResponse(
+        JSON.stringify({ description: 'Line one\nline two', highlights: ['Safe highlight'] }),
       ),
-    );
+      reason: 'openai-response-notes-invalid',
+    },
+    {
+      name: 'disallowed reference-like content',
+      response: completedResponse(
+        JSON.stringify({
+          description: 'Download v9.9.9 at https://untrusted-model-output-secret-value.example',
+          highlights: ['Unsafe output'],
+        }),
+      ),
+      reason: 'openai-response-reference-content-disallowed',
+    },
+  ] as const;
+
+  for (const failureCase of cases) {
+    await context.test(failureCase.name, async () => {
+      const diagnostics: DiagnosticEvent[] = [];
+      await assert.rejects(
+        generateNotes(
+          'context',
+          {
+            audience: 'https://api.openai.com/v1',
+            identityProviderId: 'idp-123',
+            serviceAccountId: 'sa-456',
+          },
+          {
+            clientFactory: () => ({ responses: { create: () => Promise.resolve(failureCase.response) } }),
+            reportDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+          },
+        ),
+        (error) => {
+          assert.ok(error instanceof SafeActionFailure);
+          assert.deepEqual(error.diagnostic, { category: 'model-generation', reason: failureCase.reason });
+          assert.equal(error.message, 'create-release failed');
+          assert.doesNotMatch(error.message, /untrusted|context|output-secret/u);
+          return true;
+        },
+      );
+      assert.deepEqual(diagnostics, [{ stage: 'openai-response-validation', event: 'started' }]);
+      assert.doesNotMatch(JSON.stringify(diagnostics), /untrusted|secret|context/u);
+    });
   }
 });
 

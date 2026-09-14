@@ -7,6 +7,22 @@ const MAX_TAG_NAME_LENGTH = 255;
 const unsafeGeneratedText =
   /https?:\/\/|www\.|\[[^\]]+\]\([^)]*\)|<[^>]+>|`|(^|[^\p{L}\p{N}_])v?\d+\.\d+\.\d+([^\p{L}\p{N}_]|$)|\b[0-9a-f]{7,64}\b|(^|\s)[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.:/-]+|(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu;
 
+export type GeneratedNotesValidationIssue = 'invalid-structure' | 'disallowed-reference-content';
+
+export class GeneratedNotesValidationError extends Error {
+  readonly issue: GeneratedNotesValidationIssue;
+
+  constructor(issue: GeneratedNotesValidationIssue) {
+    super('generated release notes are invalid');
+    this.name = 'GeneratedNotesValidationError';
+    this.issue = issue;
+  }
+}
+
+function failGeneratedNotesValidation(issue: GeneratedNotesValidationIssue): never {
+  throw new GeneratedNotesValidationError(issue);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -41,25 +57,29 @@ function assertExactKeys(value: Record<string, unknown>, expected: string[]): vo
 
 export function validateGeneratedNotes(value: unknown): GeneratedNotes {
   if (!isRecord(value)) {
-    throw new Error('release notes must be an object');
+    failGeneratedNotesValidation('invalid-structure');
   }
 
-  assertExactKeys(value, ['description', 'highlights']);
+  try {
+    assertExactKeys(value, ['description', 'highlights']);
+  } catch {
+    failGeneratedNotesValidation('invalid-structure');
+  }
 
   if (!isSafeLine(value.description, 1_200)) {
-    throw new Error('release description is invalid');
+    failGeneratedNotesValidation('invalid-structure');
   }
 
   if (!Array.isArray(value.highlights) || value.highlights.length < 1 || value.highlights.length > 6) {
-    throw new Error('release highlights are invalid');
+    failGeneratedNotesValidation('invalid-structure');
   }
 
   if (!value.highlights.every((highlight) => isSafeLine(highlight, 240))) {
-    throw new Error('release highlight is invalid');
+    failGeneratedNotesValidation('invalid-structure');
   }
 
   if (unsafeGeneratedText.test([value.description, ...value.highlights].join('\n'))) {
-    throw new Error('release notes contain disallowed non-descriptive content');
+    failGeneratedNotesValidation('disallowed-reference-content');
   }
 
   return { description: value.description, highlights: value.highlights };

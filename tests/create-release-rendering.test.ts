@@ -45,6 +45,7 @@ function completedResponse(text: string): unknown {
         content: [{ type: 'output_text', text }],
       },
     ],
+    output_text: text,
   };
 }
 
