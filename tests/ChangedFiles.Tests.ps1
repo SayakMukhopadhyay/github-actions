@@ -222,6 +222,81 @@ Describe 'Changed-file collection' {
         Read-ChangedRecords $env:GITHUB_OUTPUT | Should -Contain 'keep.txt'
     }
 
+    It 'uses the endpoint range for a normal fast-forward push' {
+        $repository = Join-Path $TestDrive 'fast-forward'
+        $base = New-TestRepository $repository
+
+        Set-Content -LiteralPath (Join-Path $repository 'Dockerfile') -Value 'FROM scratch'
+        Invoke-TestGit $repository @('add', 'Dockerfile') | Out-Null
+        Invoke-TestGit $repository @('commit', '-m', 'add container') | Out-Null
+        $head = Invoke-TestGit $repository @('rev-parse', 'HEAD')
+
+        $env:GITHUB_WORKSPACE = $repository
+        $env:EVENT_NAME = 'push'
+        $env:BASE_SHA = $base
+        $env:HEAD_SHA = $head
+
+        Invoke-ChangedFilesAction
+
+        $records = Read-ChangedRecords $env:GITHUB_OUTPUT
+
+        $records | Should -Contain 'Dockerfile'
+        $records | Should -Not -Contain 'keep.txt'
+    }
+
+    It 'retains a relevant change from an amended force-push replacement' {
+        $repository = Join-Path $TestDrive 'amended-force-push'
+        $commonAncestor = New-TestRepository $repository
+
+        Set-Content -LiteralPath (Join-Path $repository 'Dockerfile') -Value 'FROM scratch'
+        Invoke-TestGit $repository @('add', 'Dockerfile') | Out-Null
+        Invoke-TestGit $repository @('commit', '-m', 'original container change') | Out-Null
+        $oldTip = Invoke-TestGit $repository @('rev-parse', 'HEAD')
+
+        Invoke-TestGit $repository @('reset', '--hard', $commonAncestor) | Out-Null
+        Set-Content -LiteralPath (Join-Path $repository 'Dockerfile') -Value 'FROM scratch'
+        Invoke-TestGit $repository @('add', 'Dockerfile') | Out-Null
+        Invoke-TestGit $repository @('commit', '-m', 'amended container change') | Out-Null
+        $newHead = Invoke-TestGit $repository @('rev-parse', 'HEAD')
+
+        $env:GITHUB_WORKSPACE = $repository
+        $env:EVENT_NAME = 'push'
+        $env:BASE_SHA = $oldTip
+        $env:HEAD_SHA = $newHead
+
+        Invoke-ChangedFilesAction
+
+        Read-ChangedRecords $env:GITHUB_OUTPUT | Should -Contain 'Dockerfile'
+    }
+
+    It 'retains a relevant change removed by a force-push rewrite' {
+        $repository = Join-Path $TestDrive 'force-push-rollback'
+        $commonAncestor = New-TestRepository $repository
+
+        Set-Content -LiteralPath (Join-Path $repository 'Dockerfile') -Value 'FROM scratch'
+        Invoke-TestGit $repository @('add', 'Dockerfile') | Out-Null
+        Invoke-TestGit $repository @('commit', '-m', 'add container') | Out-Null
+        $oldTip = Invoke-TestGit $repository @('rev-parse', 'HEAD')
+
+        Invoke-TestGit $repository @('reset', '--hard', $commonAncestor) | Out-Null
+        Set-Content -LiteralPath (Join-Path $repository 'replacement.txt') -Value 'replacement'
+        Invoke-TestGit $repository @('add', 'replacement.txt') | Out-Null
+        Invoke-TestGit $repository @('commit', '-m', 'replace container change') | Out-Null
+        $newHead = Invoke-TestGit $repository @('rev-parse', 'HEAD')
+
+        $env:GITHUB_WORKSPACE = $repository
+        $env:EVENT_NAME = 'push'
+        $env:BASE_SHA = $oldTip
+        $env:HEAD_SHA = $newHead
+
+        Invoke-ChangedFilesAction
+
+        $records = Read-ChangedRecords $env:GITHUB_OUTPUT
+
+        $records | Should -Contain 'Dockerfile'
+        $records | Should -Contain 'replacement.txt'
+    }
+
     It 'reports both paths when Git recognizes a copy' {
         $repository = Join-Path $TestDrive 'copy'
         $base = New-TestRepository $repository
@@ -262,6 +337,25 @@ Describe 'Changed-file collection' {
         Invoke-ChangedFilesAction
 
         Read-ChangedRecords $env:GITHUB_OUTPUT | Should -Contain 'unrelated.txt'
+    }
+
+    It 'fails closed when rewritten push endpoints have no merge base' {
+        $repository = Join-Path $TestDrive 'unrelated-push'
+        $base = New-TestRepository $repository
+
+        Invoke-TestGit $repository @('switch', '--orphan', 'other') | Out-Null
+        Set-Content (Join-Path $repository 'unrelated.txt') unrelated
+        Invoke-TestGit $repository @('add', '-A') | Out-Null
+        Invoke-TestGit $repository @('commit', '-m', 'unrelated') | Out-Null
+        $head = Invoke-TestGit $repository @('rev-parse', 'HEAD')
+
+        $env:GITHUB_WORKSPACE = $repository
+        $env:EVENT_NAME = 'push'
+        $env:BASE_SHA = $base
+        $env:HEAD_SHA = $head
+
+        { Invoke-ChangedFilesAction } | Should -Throw '*refusing to report an incomplete changed-path set*'
+        Test-Path -LiteralPath $env:GITHUB_OUTPUT | Should -BeFalse
     }
 
     It 'fails after bounded fetch attempts when an object is unavailable' {

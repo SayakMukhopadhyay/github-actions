@@ -45,7 +45,7 @@ The action is read-only and requires the caller's checkout to have `contents: re
 
 ## `is-file-changed`
 
-`SayakMukhopadhyay/github-actions/is-file-changed@v1` is a composite action. Its PowerShell collector obtains the complete push range, including multi-commit and force pushes, initial pushes, deletes, renames, and copies. Its TypeScript implementation compiles `pattern` with JavaScript's `RegExp` constructor and tests both sides of rename and copy records.
+`SayakMukhopadhyay/github-actions/is-file-changed@v1` is a composite action. Its PowerShell collector obtains the complete push range, including multi-commit and force pushes, initial pushes, deletes, renames, and copies. Fast-forward pushes compare the event endpoints directly. Rewritten pushes use the union of the endpoint diff and the merge-base-to-new-head diff so both retained replacement changes and removed changes trigger consumers; the action fails closed if it cannot resolve a merge base after bounded shallow-history recovery. Explicit refs retain direct endpoint comparison semantics. Its TypeScript implementation compiles `pattern` with JavaScript's `RegExp` constructor and tests both sides of rename and copy records.
 
 ```yaml
 - id: version-changed

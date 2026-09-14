@@ -51,9 +51,62 @@ function Resolve-Commit([string]$Requested, [string]$Label) {
     'ensure the token can read the repository and the object exists'
 }
 
+function Invoke-ChangedFilesDiff([string]$Base, [string]$Head) {
+    $diffArguments = @(
+        'diff'
+        '--name-status'
+        '-z'
+        '--find-renames'
+        '--find-copies'
+        '--find-copies-harder'
+        $Base
+        $Head
+    )
+    $result = Invoke-NativeProcess git $diffArguments -RawOutput -AllowFailure
+
+    if ($result.ExitCode -ne 0) {
+        throw "Git could not compare $Base and $Head"
+    }
+
+    $result.StandardOutput
+}
+
+function Resolve-RewriteMergeBase([string]$Base, [string]$Head, [string]$RequestedBase) {
+    $mergeBaseArguments = @('merge-base', $Base, $Head)
+    $mergeBase = Invoke-NativeProcess git $mergeBaseArguments -RawOutput -AllowFailure
+
+    if ($mergeBase.ExitCode -eq 0 -and (Test-FullOid $mergeBase.StandardOutput.Trim())) {
+        return $mergeBase.StandardOutput.Trim().ToLowerInvariant()
+    }
+
+    $shallow = Invoke-NativeProcess git @('rev-parse', '--is-shallow-repository') -RawOutput -AllowFailure
+    if ($shallow.ExitCode -eq 0 -and $shallow.StandardOutput.Trim() -eq 'true') {
+        foreach ($depth in 64, 1024) {
+            $fetchArguments = @('fetch', '--no-tags', "--depth=$depth", 'origin', $RequestedBase)
+            $fetch = Invoke-NativeProcess git $fetchArguments -RawOutput -AllowFailure
+
+            if ($fetch.ExitCode -ne 0) {
+                [Console]::Error.WriteLine(
+                    "Merge-base history fetch at depth $depth failed for base ref $RequestedBase"
+                )
+                continue
+            }
+
+            $mergeBase = Invoke-NativeProcess git $mergeBaseArguments -RawOutput -AllowFailure
+            if ($mergeBase.ExitCode -eq 0 -and (Test-FullOid $mergeBase.StandardOutput.Trim())) {
+                return $mergeBase.StandardOutput.Trim().ToLowerInvariant()
+            }
+        }
+    }
+
+    throw "could not resolve a merge base for rewritten push endpoints $Base and $Head; " +
+    'refusing to report an incomplete changed-path set'
+}
+
 function Invoke-ChangedFilesAction([ValidateSet('validate', 'collect')][string]$Mode = 'collect') {
     $baseRef = $env:BASE_REF
     $headRef = $env:HEAD_REF
+    $isImplicitPush = -not ($baseRef -or $headRef)
     if ($baseRef -or $headRef) {
         if (-not $baseRef -or -not $headRef) {
             throw 'base-ref and head-ref must be provided together'
@@ -100,23 +153,21 @@ function Invoke-ChangedFilesAction([ValidateSet('validate', 'collect')][string]$
         }
         $changedFile = Join-Path $temporaryRoot "changed-paths-$([Guid]::NewGuid().ToString('N'))"
 
-        $diffArguments = @(
-            'diff'
-            '--name-status'
-            '-z'
-            '--find-renames'
-            '--find-copies'
-            '--find-copies-harder'
-            $base
-            $head
-        )
-        $result = Invoke-NativeProcess git $diffArguments -RawOutput -AllowFailure
+        $changedFiles = Invoke-ChangedFilesDiff $base $head
 
-        if ($result.ExitCode -ne 0) {
-            throw "Git could not compare $base and $head"
+        if ($isImplicitPush -and $baseRef -notmatch '^0+$') {
+            $ancestor = Invoke-NativeProcess git @('merge-base', '--is-ancestor', $base, $head) `
+                -RawOutput -AllowFailure
+
+            if ($ancestor.ExitCode -eq 1) {
+                $mergeBase = Resolve-RewriteMergeBase $base $head $baseRef
+                $changedFiles += Invoke-ChangedFilesDiff $mergeBase $head
+            } elseif ($ancestor.ExitCode -ne 0) {
+                throw "Git could not determine whether push base $base is an ancestor of head $head"
+            }
         }
 
-        [System.IO.File]::WriteAllBytes($changedFile, [System.Text.Encoding]::UTF8.GetBytes($result.StandardOutput))
+        [System.IO.File]::WriteAllBytes($changedFile, [System.Text.Encoding]::UTF8.GetBytes($changedFiles))
         Write-GitHubOutput -Name 'changed-files' -Value $changedFile
     } finally {
         Pop-Location
