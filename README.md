@@ -356,7 +356,7 @@ The checkout and remote Git operations receive `token` without persisting creden
 
 ## `create-release`
 
-`SayakMukhopadhyay/github-actions/create-release@v1` combines explicit PowerShell boundaries for local Git context and GitHub publication with a bundled TypeScript release-note generator. The action targets the current `github.repository` and has exactly six required inputs: `token`, `tag-name`, `release-name`, `openai-wif-audience`, `openai-identity-provider-id`, and `openai-service-account-id`.
+`SayakMukhopadhyay/github-actions/create-release@v1` combines explicit PowerShell boundaries for local Git context and GitHub publication with a bundled TypeScript release-note generator. The action targets the current `github.repository` and has exactly seven required inputs: `token`, `tag-name`, `release-name`, `make-latest`, `openai-wif-audience`, `openai-identity-provider-id`, and `openai-service-account-id`.
 
 ```yaml
 permissions:
@@ -374,6 +374,7 @@ steps:
       token: ${{ github.token }}
       tag-name: ${{ needs.version.outputs.tag-name }}
       release-name: Release ${{ needs.version.outputs.tag-name }}
+      make-latest: 'true'
       openai-wif-audience: ${{ vars.OPENAI_WIF_AUDIENCE }}
       openai-identity-provider-id: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
       openai-service-account-id: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
@@ -381,7 +382,9 @@ steps:
 
 The consuming job must grant `id-token: write`. The generator requests a GitHub OIDC JWT for the exact configured audience and exchanges it through the OpenAI SDK for a short-lived OpenAI access token, following the [official OpenAI GitHub Actions workload identity federation guide](https://developers.openai.com/api/docs/guides/workload-identity-federation/github-actions). The three OpenAI WIF inputs are identifiers and can be supplied through GitHub Actions variables; no long-lived OpenAI API key is accepted or read.
 
-The supplied tag must already exist in the current GitHub repository. The pinned checkout receives the GitHub token long enough to obtain complete local history without persisting credentials. The secret-free collector then derives release facts from that checkout. The action never creates, moves, or overwrites a tag, and its publisher re-verifies the remote tag immediately before creating a published, non-draft, non-prerelease Release. A retry returns an existing matching Release unchanged, including races where another run creates it first.
+The supplied tag must already exist in the current GitHub repository. The pinned checkout receives the GitHub token long enough to obtain complete local history without persisting credentials. The secret-free collector then derives release facts from that checkout. The action never creates, moves, or overwrites a tag, and its publisher re-verifies the remote tag immediately before creating a published, non-draft, non-prerelease Release. Required `make-latest` accepts exactly `true` or `false` and is sent explicitly as GitHub's string-valued `make_latest` creation field.
+
+`make-latest` is creation-time intent, not a permanent assertion: a Release created with `true` legitimately stops being Latest after a newer Release is selected. GitHub's Release response does not retain the original `make_latest` request value, so a retry returns an existing matching Release unchanged, including a release created concurrently after this action's POST loses the race. The action does not infer the original choice from current repository state and never patches an existing Release to reconcile it.
 
 The semantic-version suffix determines the release family. For example, `v0.0.1`, `chart-v0.0.1`, and `charts/0.0.1` compare only with lower versions sharing their exact respective prefixes. The first release in a family links to its tagged source instead of emitting an invalid comparison. Git supplies the exact first-parent commit list, commit URLs, and comparison/source URL; merge commits appear as mainline entries while their individual branch commits do not.
 

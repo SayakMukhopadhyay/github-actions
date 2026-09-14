@@ -27,6 +27,11 @@ interface ConsumerAction {
 }
 
 const repository = 'SayakMukhopadhyay/github-actions';
+const literalInputChoices: Record<string, Record<string, readonly (string | boolean)[]>> = {
+  'create-release': {
+    'make-latest': ['true', 'false', true, false],
+  },
+};
 
 function repositoryRoot(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -67,9 +72,14 @@ function hasOwn(object: object, property: string): boolean {
   return Object.prototype.hasOwnProperty.call(object, property);
 }
 
-function inputSchema(input: ActionInput): Record<string, unknown> {
+function inputSchema(actionName: string, inputName: string, input: ActionInput): Record<string, unknown> {
+  const literalChoices = literalInputChoices[actionName]?.[inputName];
   const schema: Record<string, unknown> = {
-    type: ['string', 'number', 'boolean'],
+    ...(literalChoices === undefined
+      ? { type: ['string', 'number', 'boolean'] }
+      : {
+          anyOf: [{ enum: literalChoices }, { type: 'string', pattern: '^\\$\\{\\{.+\\}\\}$' }],
+        }),
   };
 
   if (typeof input.description === 'string') {
@@ -84,7 +94,9 @@ function inputSchema(input: ActionInput): Record<string, unknown> {
 
 function actionCondition(action: ConsumerAction): Record<string, unknown> {
   const inputs = action.metadata.inputs ?? {};
-  const properties = Object.fromEntries(Object.entries(inputs).map(([name, input]) => [name, inputSchema(input)]));
+  const properties = Object.fromEntries(
+    Object.entries(inputs).map(([name, input]) => [name, inputSchema(action.directory, name, input)]),
+  );
   const callerRequired = Object.entries(inputs)
     .filter(([, input]) => input.required === true && !hasOwn(input, 'default'))
     .map(([name]) => name);

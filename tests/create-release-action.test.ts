@@ -539,6 +539,7 @@ void test('consumer composite scopes the GitHub token away from WIF generation',
   );
   assert.match(contextStep, /INPUT_PATHSPECS: \$\{\{ inputs\.pathspecs \}\}/u);
   assert.match(preflightStep, /inputs\.token/u);
+  assert.match(preflightStep, /INPUT_MAKE_LATEST: \$\{\{ inputs\.make-latest \}\}/u);
   assert.doesNotMatch(preflightStep, /inputs\.openai-(?:wif-audience|identity-provider-id|service-account-id)/u);
   assert.match(generatorStep, /inputs\.openai-wif-audience/u);
   assert.match(generatorStep, /inputs\.openai-identity-provider-id/u);
@@ -546,6 +547,7 @@ void test('consumer composite scopes the GitHub token away from WIF generation',
   assert.doesNotMatch(generatorStep, /openai-api-key|OPENAI_API_KEY/u);
   assert.doesNotMatch(generatorStep, /inputs\.token/u);
   assert.match(publisherStep, /inputs\.token/u);
+  assert.match(publisherStep, /INPUT_MAKE_LATEST: \$\{\{ inputs\.make-latest \}\}/u);
   assert.doesNotMatch(publisherStep, /inputs\.openai-(?:wif-audience|identity-provider-id|service-account-id)/u);
   assert.match(cleanupStep, /if: always\(\)/u);
   assert.match(cleanupStep, /steps\.context\.outputs\.session-directory/u);

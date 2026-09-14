@@ -223,6 +223,22 @@ void test('bump-version requires an explicit increment at every action boundary'
   assert.doesNotMatch(implementation, /increment:\s*core\.getInput\('increment'\)\s*\|\|/u);
 });
 
+void test('create-release requires and isolates an explicit latest policy', () => {
+  const metadata = readAction('create-release');
+  const latestInput = metadata.inputs?.['make-latest'];
+  const steps = metadata.runs?.steps ?? [];
+  const preflight = steps.find((step) => step.id === 'preflight');
+  const publish = steps.find((step) => step.id === 'publish');
+  const generator = steps.find((step) => step.name === 'Generate and render release notes');
+
+  assert.equal(latestInput?.required, true);
+  assert.equal('default' in (latestInput ?? {}), false);
+  assert.match(String(latestInput?.description), /exactly true or false/u);
+  assert.equal(preflight?.env?.INPUT_MAKE_LATEST, '${{ inputs.make-latest }}');
+  assert.equal(publish?.env?.INPUT_MAKE_LATEST, '${{ inputs.make-latest }}');
+  assert.equal('INPUT_MAKE_LATEST' in (generator?.env ?? {}), false);
+});
+
 void test('container image inspection metadata is exact-reference and read-only', () => {
   const metadata = readAction('container-image-inspect');
 

@@ -10,6 +10,9 @@ inputs:
   release-name:
     description: Displayed GitHub Release name
     required: true
+  make-latest:
+    description: Whether this release must be the repository's latest release; exactly true or false
+    required: true
   openai-wif-audience:
     description: Audience configured on the OpenAI workload identity provider
     required: true
@@ -62,6 +65,7 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_TOKEN: ${{ inputs.token }}
+        INPUT_MAKE_LATEST: ${{ inputs.make-latest }}
         FACTS_FILE: ${{ steps.context.outputs.facts-file }}
         PUBLISH_MODE: check
       run: '& "$env:ACTION_PATH/publish-release.ps1"'
@@ -85,6 +89,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_TOKEN: ${{ inputs.token }}
         INPUT_RELEASE_NAME: ${{ inputs.release-name }}
+        INPUT_MAKE_LATEST: ${{ inputs.make-latest }}
         FACTS_FILE: ${{ steps.context.outputs.facts-file }}
         BODY_FILE: ${{ steps.context.outputs.body-file }}
         PUBLISH_MODE: publish

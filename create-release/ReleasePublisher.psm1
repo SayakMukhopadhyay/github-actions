@@ -5,6 +5,11 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1')
 
 function Invoke-PublishRelease {
+    $makeLatest = $env:INPUT_MAKE_LATEST
+    if ($makeLatest -cnotin @('true', 'false')) {
+        throw 'make-latest must be exactly true or false'
+    }
+
     $token = Assert-SingleLine $env:INPUT_TOKEN token
     $factsPath = (Resolve-Path $env:FACTS_FILE).Path
     $runnerTemp = (Resolve-Path $env:RUNNER_TEMP).Path
@@ -140,6 +145,7 @@ function Invoke-PublishRelease {
         draft                  = $false
         prerelease             = $false
         generate_release_notes = $false
+        make_latest            = $makeLatest
     }
 
     $request | ConvertTo-Json | Set-Content $requestPath -Encoding utf8NoBOM

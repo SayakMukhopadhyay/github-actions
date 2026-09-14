@@ -110,6 +110,7 @@ void test('accepts valid inputs for each documented consumer action', async () =
         token: '${{ secrets.GITHUB_TOKEN }}',
         'tag-name': 'v1.2.3',
         'release-name': 'v1.2.3',
+        'make-latest': 'true',
         'openai-wif-audience': '${{ vars.OPENAI_WIF_AUDIENCE }}',
         'openai-identity-provider-id': '${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}',
         'openai-service-account-id': '${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}',
@@ -194,6 +195,49 @@ void test('rejects the removed create-release API key contract', async () => {
         'tag-name': 'v1.2.3',
         'release-name': 'v1.2.3',
         'openai-api-key': '${{ secrets.OPENAI_API_KEY }}',
+      }),
+    ),
+    false,
+  );
+});
+
+void test('requires and constrains the create-release latest policy', async () => {
+  const baseInputs = {
+    token: '${{ secrets.GITHUB_TOKEN }}',
+    'tag-name': 'v1.2.3',
+    'release-name': 'v1.2.3',
+    'openai-wif-audience': '${{ vars.OPENAI_WIF_AUDIENCE }}',
+    'openai-identity-provider-id': '${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}',
+    'openai-service-account-id': '${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}',
+  };
+
+  assert.equal(
+    await validateWorkflow(
+      workflowFor('SayakMukhopadhyay/github-actions/create-release@v1', {
+        ...baseInputs,
+        'make-latest': 'true',
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    await validateWorkflow(
+      workflowFor('SayakMukhopadhyay/github-actions/create-release@v1', {
+        ...baseInputs,
+        'make-latest': 'false',
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    await validateWorkflow(workflowFor('SayakMukhopadhyay/github-actions/create-release@v1', baseInputs)),
+    false,
+  );
+  assert.equal(
+    await validateWorkflow(
+      workflowFor('SayakMukhopadhyay/github-actions/create-release@v1', {
+        ...baseInputs,
+        'make-latest': 'legacy',
       }),
     ),
     false,

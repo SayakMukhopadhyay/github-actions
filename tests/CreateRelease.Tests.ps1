@@ -250,6 +250,7 @@ Describe 'Create-release publication' {
         $script:concurrent = $false
         $script:moved = $false
         $script:releaseReads = 0
+        $script:createRequest = $null
         $script:factsPath = Join-Path $TestDrive 'release-facts.json'
         $script:bodyPath = Join-Path $TestDrive 'release-body.md'
 
@@ -275,6 +276,7 @@ Describe 'Create-release publication' {
         $env:BODY_FILE = $script:bodyPath
         $env:INPUT_TOKEN = 'token'
         $env:INPUT_RELEASE_NAME = 'Release 1.0.0'
+        $env:INPUT_MAKE_LATEST = 'true'
         $env:PUBLISH_MODE = 'publish'
         $env:GITHUB_OUTPUT = Join-Path $TestDrive 'publish-output'
 
@@ -328,6 +330,8 @@ Describe 'Create-release publication' {
             }
 
             if ($ArgumentList[2] -eq 'POST' -and $script:createSuccess) {
+                $inputIndex = [Array]::IndexOf($ArgumentList, '--input')
+                $script:createRequest = Get-Content -Raw $ArgumentList[$inputIndex + 1] | ConvertFrom-Json
                 $response = @{
                     id         = 18
                     html_url   = 'https://github.com/owner/repository/releases/tag/v1.0.0'
@@ -352,6 +356,39 @@ Describe 'Create-release publication' {
         }
     }
 
+    It 'returns an existing release unchanged because original latest intent is not observable' {
+        $script:existing = $true
+        $env:INPUT_MAKE_LATEST = 'false'
+
+        Invoke-PublishRelease
+
+        (Get-Content -Raw $env:GITHUB_OUTPUT) | Should -Match 'release-id=17'
+        Should -Invoke Invoke-NativeProcess -ModuleName ReleasePublisher -Times 0 -ParameterFilter {
+            $ArgumentList[2] -eq 'POST'
+        }
+    }
+
+    It 'rejects a missing latest policy before any remote request' {
+        $env:INPUT_MAKE_LATEST = $null
+
+        { Invoke-PublishRelease } | Should -Throw 'make-latest must be exactly true or false'
+        Should -Invoke Invoke-NativeProcess -ModuleName ReleasePublisher -Times 0
+    }
+
+    It 'rejects an invalid latest policy without echoing its value' {
+        $env:INPUT_MAKE_LATEST = 'legacy-sensitive-value'
+
+        $message = try {
+            Invoke-PublishRelease
+        } catch {
+            $_.Exception.Message
+        }
+
+        $message | Should -BeExactly 'make-latest must be exactly true or false'
+        $message | Should -Not -Match 'legacy-sensitive-value'
+        Should -Invoke Invoke-NativeProcess -ModuleName ReleasePublisher -Times 0
+    }
+
     It 'reports a missing release during preflight without publishing' {
         $env:PUBLISH_MODE = 'check'
 
@@ -370,6 +407,21 @@ Describe 'Create-release publication' {
         Should -Invoke Invoke-NativeProcess -ModuleName ReleasePublisher -Times 1 -ParameterFilter {
             $ArgumentList[2] -eq 'POST' -and $ArgumentList -contains '--input'
         }
+    }
+
+    It 'sends the exact string latest policy in the release request' -ForEach @(
+        @{ MakeLatest = 'true' }
+        @{ MakeLatest = 'false' }
+    ) {
+        $env:INPUT_MAKE_LATEST = $MakeLatest
+
+        Invoke-PublishRelease
+
+        $script:createRequest.make_latest | Should -BeOfType ([string])
+        $script:createRequest.make_latest | Should -BeExactly $MakeLatest
+        $script:createRequest.draft | Should -BeFalse
+        $script:createRequest.prerelease | Should -BeFalse
+        $script:createRequest.generate_release_notes | Should -BeFalse
     }
 
     It 'accepts a concurrently created release after a rejected create' {

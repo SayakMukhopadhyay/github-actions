@@ -442,6 +442,13 @@
                             "type": ["string", "number", "boolean"],
                             "description": "Displayed GitHub Release name"
                           },
+                          "make-latest": {
+                            "anyOf": [
+                              { "enum": ["true", "false", true, false] },
+                              { "type": "string", "pattern": "^\\$\\{\\{.+\\}\\}$" }
+                            ],
+                            "description": "Whether this release must be the repository's latest release; exactly true or false"
+                          },
                           "openai-wif-audience": {
                             "type": ["string", "number", "boolean"],
                             "description": "Audience configured on the OpenAI workload identity provider"
@@ -465,6 +472,7 @@
                           "token",
                           "tag-name",
                           "release-name",
+                          "make-latest",
                           "openai-wif-audience",
                           "openai-identity-provider-id",
                           "openai-service-account-id"
