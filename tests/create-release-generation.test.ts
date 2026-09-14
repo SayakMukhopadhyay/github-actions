@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import {
   generateNotes,
+  GeneratedNotesValidationError,
   renderReleaseBody,
   run,
   SafeActionFailure,
@@ -257,7 +258,16 @@ void test('the OpenAI request is fixed, stateless, tool-free, bounded, and schem
   assert.deepEqual(observedRequest?.tools, []);
   assert.deepEqual(observedRequest?.reasoning, { effort: 'none' });
   assert.equal(observedRequest?.max_output_tokens, 800);
-  assert.match(String(observedRequest?.instructions), /mixed commits.*files absent from that evidence/u);
+  const instructions = String(observedRequest?.instructions);
+  assert.match(instructions, /mixed commits.*files absent from that evidence/u);
+  assert.match(
+    instructions,
+    /Content policy:.*URLs.*Markdown.*@mentions.*release tags.*commit identifiers.*file-system paths/u,
+  );
+  assert.match(
+    instructions,
+    /Ordinary prose is allowed.*CI\/CD.*read\/write.*client\/server.*24\/7.*short hexadecimal-looking words/u,
+  );
   assert.deepEqual((observedRequest?.text as Record<string, unknown>).format, {
     type: 'json_schema',
     name: 'release_description',
@@ -450,14 +460,47 @@ void test('response validation failures use granular secret-safe reason codes', 
       reason: 'openai-response-notes-invalid',
     },
     {
-      name: 'disallowed reference-like content',
+      name: 'URL content',
       response: completedResponse(
         JSON.stringify({
-          description: 'Download v9.9.9 at https://untrusted-model-output-secret-value.example',
+          description: 'See https://untrusted-model-output-secret-value.example',
           highlights: ['Unsafe output'],
         }),
       ),
-      reason: 'openai-response-reference-content-disallowed',
+      reason: 'openai-response-url-or-uri-content-disallowed',
+    },
+    {
+      name: 'markup content',
+      response: completedResponse(
+        JSON.stringify({ description: 'A **formatted** description', highlights: ['Unsafe output'] }),
+      ),
+      reason: 'openai-response-markup-content-disallowed',
+    },
+    {
+      name: 'mention content',
+      response: completedResponse(
+        JSON.stringify({ description: 'Thanks @untrusted-model-output-secret-value', highlights: ['Unsafe output'] }),
+      ),
+      reason: 'openai-response-mention-content-disallowed',
+    },
+    {
+      name: 'release reference content',
+      response: completedResponse(JSON.stringify({ description: 'Ships as v9.9.9', highlights: ['Unsafe output'] })),
+      reason: 'openai-response-release-reference-disallowed',
+    },
+    {
+      name: 'commit reference content',
+      response: completedResponse(
+        JSON.stringify({ description: 'Introduced by commit deadbeef', highlights: ['Unsafe output'] }),
+      ),
+      reason: 'openai-response-commit-reference-disallowed',
+    },
+    {
+      name: 'path or coordinate content',
+      response: completedResponse(
+        JSON.stringify({ description: 'Updates src/release.ts', highlights: ['Unsafe output'] }),
+      ),
+      reason: 'openai-response-path-or-coordinate-disallowed',
     },
   ] as const;
 
@@ -491,18 +534,28 @@ void test('response validation failures use granular secret-safe reason codes', 
   }
 });
 
-void test('local validation requires exact fields, printable lines, and safe descriptive prose', () => {
+void test('local validation allows ordinary technical prose without guessing at token meaning', () => {
   assert.deepEqual(
     validateGeneratedNotes({
-      description: 'A concise release description',
-      highlights: ['Improves predictable behavior'],
+      description: 'Improves CI/CD behavior for client/server workflows running 24/7',
+      highlights: [
+        'Clarifies read/write behavior',
+        'Handles defaced and deadbeef as ordinary words',
+        'Supports format 1.2.3',
+      ],
     }),
     {
-      description: 'A concise release description',
-      highlights: ['Improves predictable behavior'],
+      description: 'Improves CI/CD behavior for client/server workflows running 24/7',
+      highlights: [
+        'Clarifies read/write behavior',
+        'Handles defaced and deadbeef as ordinary words',
+        'Supports format 1.2.3',
+      ],
     },
   );
+});
 
+void test('local validation requires exact fields and printable lines', () => {
   assert.throws(() =>
     validateGeneratedNotes({
       description: 'A concise release description',
@@ -517,11 +570,32 @@ void test('local validation requires exact fields, printable lines, and safe des
       highlights: ['Improves predictable behavior'],
     }),
   );
+});
 
-  assert.throws(() =>
-    validateGeneratedNotes({
-      description: 'A concise release description',
-      highlights: ['See Owner/Project for details'],
-    }),
-  );
+void test('local validation categorizes recognizable disallowed constructs', () => {
+  const cases = [
+    ['url-or-uri-content', 'See https://example.test'],
+    ['url-or-uri-content', 'Email mailto:user@example.test'],
+    ['markup-content', 'Use **bold** emphasis'],
+    ['markup-content', '<strong>Important</strong>'],
+    ['mention-content', 'Notify @owner'],
+    ['release-reference-content', 'Ships as v1.2.3'],
+    ['release-reference-content', 'Uses version 1.2.3'],
+    ['commit-reference-content', 'Commit deadbeef fixed retries'],
+    ['commit-reference-content', 'a'.repeat(40)],
+    ['path-or-coordinate-content', 'Updates src/release.ts'],
+    ['path-or-coordinate-content', 'Reads /etc/release-notes'],
+    ['path-or-coordinate-content', String.raw`Reads C:\release\notes.txt`],
+    ['path-or-coordinate-content', 'Publishes ghcr.io/owner/image:tag'],
+    ['path-or-coordinate-content', 'Installs @scope/package'],
+    ['path-or-coordinate-content', 'Uses repository Owner/Project'],
+  ] as const;
+
+  for (const [issue, description] of cases) {
+    assert.throws(
+      () => validateGeneratedNotes({ description, highlights: ['Safe highlight'] }),
+      (error) => error instanceof GeneratedNotesValidationError && error.issue === issue,
+      description,
+    );
+  }
 });

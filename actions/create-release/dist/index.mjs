@@ -32255,7 +32255,80 @@ const MAX_RENDERED_COMMITS = 48;
 const MAX_REPOSITORY_LENGTH = 256;
 const MAX_SERVER_URL_LENGTH = 255;
 const MAX_TAG_NAME_LENGTH = 255;
-const unsafeGeneratedText = /https?:\/\/|www\.|\[[^\]]+\]\([^)]*\)|<[^>]+>|`|(^|[^\p{L}\p{N}_])v?\d+\.\d+\.\d+([^\p{L}\p{N}_]|$)|\b[0-9a-f]{7,64}\b|(^|\s)[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.:/-]+|(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu;
+const generatedTextRules = [
+	{
+		issue: "url-or-uri-content",
+		pattern: /\b[A-Za-z][A-Za-z0-9+.-]{1,31}:\/\//u
+	},
+	{
+		issue: "url-or-uri-content",
+		pattern: /\b(?:www\.|mailto:|urn:|data:)/iu
+	},
+	{
+		issue: "markup-content",
+		pattern: /!?\[[^\]\r\n]*\]\([^\r\n)]*\)/u
+	},
+	{
+		issue: "markup-content",
+		pattern: /<\/?[A-Za-z][^>\r\n]*>|<\s*(?:[A-Za-z][A-Za-z0-9+.-]{1,31}:\/\/|mailto:)[^>\r\n]*>/iu
+	},
+	{
+		issue: "markup-content",
+		pattern: /`|\*\*[^*\r\n]+\*\*|__[^_\r\n]+__|~~[^~\r\n]+~~/u
+	},
+	{
+		issue: "markup-content",
+		pattern: /^(?:#{1,6}|>|[-+*])\s|^(?:-{3,}|_{3,}|\*{3,})$/u
+	},
+	{
+		issue: "path-or-coordinate-content",
+		pattern: /(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.-]+\b/iu
+	},
+	{
+		issue: "mention-content",
+		pattern: /(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu
+	},
+	{
+		issue: "release-reference-content",
+		pattern: /(^|[^\p{L}\p{N}_])v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?(?=$|[^\p{L}\p{N}_])|\b(?:release|tag|version)\s*(?:[:#=]\s*)?v?\d+(?:\.\d+){0,3}(?:[-+][0-9A-Za-z.-]+)?\b/iu
+	},
+	{
+		issue: "commit-reference-content",
+		pattern: /\b(?:[0-9a-f]{40}|[0-9a-f]{64})\b|\b(?:commit|revision|rev|sha(?:-1|256)?)\s*(?:[:#=]\s*)?[0-9a-f]{7,64}\b/iu
+	},
+	{
+		issue: "path-or-coordinate-content",
+		pattern: /(^|[\s([{"'])\/(?:[\p{L}\p{N}_.@~-]+\/)*[\p{L}\p{N}_.@~-]+/iu
+	},
+	{
+		issue: "path-or-coordinate-content",
+		pattern: /(^|[\s([{"'])(?:\.{1,2}|~)\/[^\s)\]}"',;]+/u
+	},
+	{
+		issue: "path-or-coordinate-content",
+		pattern: /(^|[\s([{"'])[A-Za-z]:\\[^\s)\]}"',;]+/u
+	},
+	{
+		issue: "path-or-coordinate-content",
+		pattern: /\b[\p{L}\p{N}_.@~-]+(?:\/[\p{L}\p{N}_.@~-]+){2,}\b/iu
+	},
+	{
+		issue: "path-or-coordinate-content",
+		pattern: /\b[\p{L}\p{N}_.@~-]+\/[\p{L}\p{N}_.@~-]+\.[A-Za-z0-9]{1,16}\b/iu
+	},
+	{
+		issue: "path-or-coordinate-content",
+		pattern: /\b[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?::\d+)?\/[A-Za-z0-9_.:@/-]+\b/u
+	},
+	{
+		issue: "path-or-coordinate-content",
+		pattern: /\b[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.-]+(?::[\p{L}\p{N}_.-]+|@sha256:[0-9a-f]{64})\b/iu
+	},
+	{
+		issue: "path-or-coordinate-content",
+		pattern: /\b(?:repository|repo|package|image|artifact|file|path)\s+(?:named\s+)?@?[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.:@/-]+\b/iu
+	}
+];
 var GeneratedNotesValidationError = class extends Error {
 	issue;
 	constructor(issue) {
@@ -32296,7 +32369,7 @@ function validateGeneratedNotes(value) {
 	if (!isSafeLine(value.description, 1200)) failGeneratedNotesValidation("invalid-structure");
 	if (!Array.isArray(value.highlights) || value.highlights.length < 1 || value.highlights.length > 6) failGeneratedNotesValidation("invalid-structure");
 	if (!value.highlights.every((highlight) => isSafeLine(highlight, 240))) failGeneratedNotesValidation("invalid-structure");
-	if (unsafeGeneratedText.test([value.description, ...value.highlights].join("\n"))) failGeneratedNotesValidation("disallowed-reference-content");
+	for (const line of [value.description, ...value.highlights]) for (const rule of generatedTextRules) if (rule.pattern.test(line)) failGeneratedNotesValidation(rule.issue);
 	return {
 		description: value.description,
 		highlights: value.highlights
@@ -32385,9 +32458,20 @@ const INSTRUCTIONS = [
 	"Return one short plain-text description and one to six plain-text highlights.",
 	"Describe user-visible behavior only.",
 	"For mixed commits, discuss only behavior supported by the supplied changed-file statistics and patches; ignore subject wording about files absent from that evidence.",
-	"Do not emit Markdown, URLs, links, tag names, version numbers, commit identifiers, file paths, package or image coordinates, or artifact references.",
+	"Content policy: do not emit URLs or URI schemes; Markdown, HTML, or code markup; @mentions; release tags or explicitly labelled version numbers; commit identifiers; file-system paths; or repository, package, image, or artifact coordinates.",
+	"Ordinary prose is allowed, including slash compounds such as CI/CD, read/write, client/server, and 24/7, bare unlabelled dotted numbers, and bare short hexadecimal-looking words.",
+	"Refer to the release generically as \"this release\" and describe components by their supported product-facing names.",
 	"Do not invent facts."
 ].join(" ");
+const validationFailureReasons = {
+	"invalid-structure": "openai-response-notes-invalid",
+	"url-or-uri-content": "openai-response-url-or-uri-content-disallowed",
+	"markup-content": "openai-response-markup-content-disallowed",
+	"mention-content": "openai-response-mention-content-disallowed",
+	"release-reference-content": "openai-response-release-reference-disallowed",
+	"commit-reference-content": "openai-response-commit-reference-disallowed",
+	"path-or-coordinate-content": "openai-response-path-or-coordinate-disallowed"
+};
 function isRecord(value) {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -32625,9 +32709,9 @@ async function generateNotes(context, identity, dependencies = {}) {
 	try {
 		notes = validateGeneratedNotes(parsed);
 	} catch (error) {
-		if (error instanceof GeneratedNotesValidationError && error.issue === "disallowed-reference-content") fail({
+		if (error instanceof GeneratedNotesValidationError) fail({
 			category: "model-generation",
-			reason: "openai-response-reference-content-disallowed"
+			reason: validationFailureReasons[error.issue]
 		});
 		fail({
 			category: "model-generation",

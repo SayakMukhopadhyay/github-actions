@@ -94,7 +94,12 @@ export type ModelGenerationFailureReason =
   | 'openai-response-output-text-missing'
   | 'openai-response-json-invalid'
   | 'openai-response-notes-invalid'
-  | 'openai-response-reference-content-disallowed';
+  | 'openai-response-url-or-uri-content-disallowed'
+  | 'openai-response-markup-content-disallowed'
+  | 'openai-response-mention-content-disallowed'
+  | 'openai-response-release-reference-disallowed'
+  | 'openai-response-commit-reference-disallowed'
+  | 'openai-response-path-or-coordinate-disallowed';
 export type WorkloadIdentityFailureReason =
   'github-oidc-token-request-failed' | 'github-oidc-token-invalid' | 'openai-token-exchange-failed';
 

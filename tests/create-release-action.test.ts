@@ -473,14 +473,14 @@ void test('run reports safe diagnostics without changing action input lookup or 
         reason: 'openai-response-notes-invalid',
       },
       {
-        name: 'disallowed reference content',
+        name: 'disallowed URL content',
         response: completedResponse(
           JSON.stringify({
             description: 'See https://untrusted-model-output-secret-value.example',
             highlights: ['Unsafe output'],
           }),
         ),
-        reason: 'openai-response-reference-content-disallowed',
+        reason: 'openai-response-url-or-uri-content-disallowed',
       },
     ] as const;
 

@@ -7,12 +7,14 @@ import {
   type DiagnosticReporter,
   type GeneratedNotes,
   type GitHubOidcClaimDiagnostics,
+  type ModelGenerationFailureReason,
   type OpenAIDependencies,
   type ResponseClient,
   type WorkloadIdentityClientOptions,
   type WorkloadIdentityInputs,
 } from './contracts.ts';
 import { GeneratedNotesValidationError, validateGeneratedNotes } from './validation.ts';
+import type { GeneratedNotesValidationIssue } from './validation.ts';
 
 const MODEL = 'gpt-5.6-luna';
 const OPENAI_AUTH_ORIGIN = 'https://auth.openai.com';
@@ -36,9 +38,21 @@ const INSTRUCTIONS = [
   'Return one short plain-text description and one to six plain-text highlights.',
   'Describe user-visible behavior only.',
   'For mixed commits, discuss only behavior supported by the supplied changed-file statistics and patches; ignore subject wording about files absent from that evidence.',
-  'Do not emit Markdown, URLs, links, tag names, version numbers, commit identifiers, file paths, package or image coordinates, or artifact references.',
+  'Content policy: do not emit URLs or URI schemes; Markdown, HTML, or code markup; @mentions; release tags or explicitly labelled version numbers; commit identifiers; file-system paths; or repository, package, image, or artifact coordinates.',
+  'Ordinary prose is allowed, including slash compounds such as CI/CD, read/write, client/server, and 24/7, bare unlabelled dotted numbers, and bare short hexadecimal-looking words.',
+  'Refer to the release generically as "this release" and describe components by their supported product-facing names.',
   'Do not invent facts.',
 ].join(' ');
+
+const validationFailureReasons = {
+  'invalid-structure': 'openai-response-notes-invalid',
+  'url-or-uri-content': 'openai-response-url-or-uri-content-disallowed',
+  'markup-content': 'openai-response-markup-content-disallowed',
+  'mention-content': 'openai-response-mention-content-disallowed',
+  'release-reference-content': 'openai-response-release-reference-disallowed',
+  'commit-reference-content': 'openai-response-commit-reference-disallowed',
+  'path-or-coordinate-content': 'openai-response-path-or-coordinate-disallowed',
+} as const satisfies Record<GeneratedNotesValidationIssue, ModelGenerationFailureReason>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -351,8 +365,8 @@ export async function generateNotes(
   try {
     notes = validateGeneratedNotes(parsed);
   } catch (error) {
-    if (error instanceof GeneratedNotesValidationError && error.issue === 'disallowed-reference-content') {
-      fail({ category: 'model-generation', reason: 'openai-response-reference-content-disallowed' });
+    if (error instanceof GeneratedNotesValidationError) {
+      fail({ category: 'model-generation', reason: validationFailureReasons[error.issue] });
     }
     fail({ category: 'model-generation', reason: 'openai-response-notes-invalid' });
   }

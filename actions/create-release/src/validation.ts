@@ -4,10 +4,100 @@ const MAX_RENDERED_COMMITS = 48;
 const MAX_REPOSITORY_LENGTH = 256;
 const MAX_SERVER_URL_LENGTH = 255;
 const MAX_TAG_NAME_LENGTH = 255;
-const unsafeGeneratedText =
-  /https?:\/\/|www\.|\[[^\]]+\]\([^)]*\)|<[^>]+>|`|(^|[^\p{L}\p{N}_])v?\d+\.\d+\.\d+([^\p{L}\p{N}_]|$)|\b[0-9a-f]{7,64}\b|(^|\s)[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.:/-]+|(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu;
 
-export type GeneratedNotesValidationIssue = 'invalid-structure' | 'disallowed-reference-content';
+export type GeneratedNotesValidationIssue =
+  | 'invalid-structure'
+  | 'url-or-uri-content'
+  | 'markup-content'
+  | 'mention-content'
+  | 'release-reference-content'
+  | 'commit-reference-content'
+  | 'path-or-coordinate-content';
+
+type GeneratedNotesContentIssue = Exclude<GeneratedNotesValidationIssue, 'invalid-structure'>;
+
+interface GeneratedTextRule {
+  issue: GeneratedNotesContentIssue;
+  pattern: RegExp;
+}
+
+const generatedTextRules: readonly GeneratedTextRule[] = [
+  {
+    issue: 'url-or-uri-content',
+    pattern: /\b[A-Za-z][A-Za-z0-9+.-]{1,31}:\/\//u,
+  },
+  {
+    issue: 'url-or-uri-content',
+    pattern: /\b(?:www\.|mailto:|urn:|data:)/iu,
+  },
+  {
+    issue: 'markup-content',
+    pattern: /!?\[[^\]\r\n]*\]\([^\r\n)]*\)/u,
+  },
+  {
+    issue: 'markup-content',
+    pattern: /<\/?[A-Za-z][^>\r\n]*>|<\s*(?:[A-Za-z][A-Za-z0-9+.-]{1,31}:\/\/|mailto:)[^>\r\n]*>/iu,
+  },
+  {
+    issue: 'markup-content',
+    pattern: /`|\*\*[^*\r\n]+\*\*|__[^_\r\n]+__|~~[^~\r\n]+~~/u,
+  },
+  {
+    issue: 'markup-content',
+    pattern: /^(?:#{1,6}|>|[-+*])\s|^(?:-{3,}|_{3,}|\*{3,})$/u,
+  },
+  {
+    issue: 'path-or-coordinate-content',
+    pattern: /(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.-]+\b/iu,
+  },
+  {
+    issue: 'mention-content',
+    pattern: /(^|[^\p{L}\p{N}_])@[\p{L}\p{N}_]/iu,
+  },
+  {
+    issue: 'release-reference-content',
+    pattern:
+      /(^|[^\p{L}\p{N}_])v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?(?=$|[^\p{L}\p{N}_])|\b(?:release|tag|version)\s*(?:[:#=]\s*)?v?\d+(?:\.\d+){0,3}(?:[-+][0-9A-Za-z.-]+)?\b/iu,
+  },
+  {
+    issue: 'commit-reference-content',
+    pattern:
+      /\b(?:[0-9a-f]{40}|[0-9a-f]{64})\b|\b(?:commit|revision|rev|sha(?:-1|256)?)\s*(?:[:#=]\s*)?[0-9a-f]{7,64}\b/iu,
+  },
+  {
+    issue: 'path-or-coordinate-content',
+    pattern: /(^|[\s([{"'])\/(?:[\p{L}\p{N}_.@~-]+\/)*[\p{L}\p{N}_.@~-]+/iu,
+  },
+  {
+    issue: 'path-or-coordinate-content',
+    pattern: /(^|[\s([{"'])(?:\.{1,2}|~)\/[^\s)\]}"',;]+/u,
+  },
+  {
+    issue: 'path-or-coordinate-content',
+    pattern: /(^|[\s([{"'])[A-Za-z]:\\[^\s)\]}"',;]+/u,
+  },
+  {
+    issue: 'path-or-coordinate-content',
+    pattern: /\b[\p{L}\p{N}_.@~-]+(?:\/[\p{L}\p{N}_.@~-]+){2,}\b/iu,
+  },
+  {
+    issue: 'path-or-coordinate-content',
+    pattern: /\b[\p{L}\p{N}_.@~-]+\/[\p{L}\p{N}_.@~-]+\.[A-Za-z0-9]{1,16}\b/iu,
+  },
+  {
+    issue: 'path-or-coordinate-content',
+    pattern: /\b[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?::\d+)?\/[A-Za-z0-9_.:@/-]+\b/u,
+  },
+  {
+    issue: 'path-or-coordinate-content',
+    pattern: /\b[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.-]+(?::[\p{L}\p{N}_.-]+|@sha256:[0-9a-f]{64})\b/iu,
+  },
+  {
+    issue: 'path-or-coordinate-content',
+    pattern:
+      /\b(?:repository|repo|package|image|artifact|file|path)\s+(?:named\s+)?@?[\p{L}\p{N}_.-]+\/[\p{L}\p{N}_.:@/-]+\b/iu,
+  },
+];
 
 export class GeneratedNotesValidationError extends Error {
   readonly issue: GeneratedNotesValidationIssue;
@@ -78,8 +168,12 @@ export function validateGeneratedNotes(value: unknown): GeneratedNotes {
     failGeneratedNotesValidation('invalid-structure');
   }
 
-  if (unsafeGeneratedText.test([value.description, ...value.highlights].join('\n'))) {
-    failGeneratedNotesValidation('disallowed-reference-content');
+  for (const line of [value.description, ...value.highlights]) {
+    for (const rule of generatedTextRules) {
+      if (rule.pattern.test(line)) {
+        failGeneratedNotesValidation(rule.issue);
+      }
+    }
   }
 
   return { description: value.description, highlights: value.highlights };
