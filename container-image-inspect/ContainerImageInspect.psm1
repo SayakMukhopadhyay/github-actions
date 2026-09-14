@@ -13,7 +13,7 @@ function Initialize-ContainerImageInspection {
         -Requirement Optional
 
     $imageReference = Resolve-ContainerImageReference `
-        -Version $env:INPUT_VERSION `
+        -Tag $env:INPUT_TAG `
         -Component $env:INPUT_COMPONENT `
         -Registry $env:INPUT_REGISTRY `
         -ImageRepository $env:INPUT_IMAGE_REPOSITORY `

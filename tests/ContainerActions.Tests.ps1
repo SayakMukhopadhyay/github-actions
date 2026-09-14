@@ -13,6 +13,7 @@ BeforeAll {
 Describe 'Container action preparation' {
     BeforeEach {
         $environmentVariables = @(
+            'INPUT_TAG'
             'INPUT_VERSION'
             'INPUT_COMPONENT'
             'INPUT_REGISTRY'
@@ -30,7 +31,6 @@ Describe 'Container action preparation' {
             'INSPECTION_REFERENCE'
             'LABEL_SNAPSHOT'
             'INPUT_SOURCE_DIGEST'
-            'INPUT_TAG'
             'GITHUB_OUTPUT'
             'SOURCE_REFERENCE'
             'TARGET_REFERENCE'
@@ -49,23 +49,29 @@ Describe 'Container action preparation' {
         $env:GITHUB_ACTION = 'container-build-push'
     }
 
-    It 'constructs and normalizes a build image reference' {
-        $env:INPUT_VERSION = '1.2.3'
+    It 'keeps the build tag separate from the packaged application version' {
+        $env:INPUT_TAG = 'build-0123456789abcdef0123456789abcdef01234567'
+        $env:INPUT_VERSION = '0.0.1'
         $env:INPUT_COMPONENT = 'API'
         $env:INPUT_REGISTRY = 'GHCR.IO'
 
         Initialize-ContainerBuild
 
         (Get-Content -Raw $env:GITHUB_OUTPUT) |
-            Should -Match 'image-reference=ghcr.io/owner/repository/api:1.2.3'
+            Should -Match 'image-reference=ghcr.io/owner/repository/api:build-0123456789abcdef0123456789abcdef01234567'
         (Get-Content -Raw $env:GITHUB_OUTPUT) |
             Should -Match 'inspection-reference=container-build-push-inspection:[0-9a-f]{24}'
         (Get-Content -Raw $env:GITHUB_OUTPUT) |
             Should -Match 'org.opencontainers.image.revision=0123456789abcdef0123456789abcdef01234567'
+        (Get-Content -Raw $env:GITHUB_OUTPUT) |
+            Should -Match 'org.opencontainers.image.version=0.0.1'
+        (Get-Content -Raw $env:GITHUB_OUTPUT) |
+            Should -Not -Match 'org.opencontainers.image.version=build-'
     }
 
     It 'computes one stable temporary reference and one shared dynamic label set' {
-        $env:INPUT_VERSION = '1.2.3'
+        $env:INPUT_TAG = 'build-abcdef'
+        $env:INPUT_VERSION = '0.0.1'
         $env:INPUT_PUSH = 'false'
 
         Initialize-ContainerBuild
@@ -84,12 +90,14 @@ Describe 'Container action preparation' {
         $annotations = ConvertTo-ImageAnnotations -Labels ([ordered]@{
                 'org.opencontainers.image.title'       = 'Package=service'
                 'org.opencontainers.image.description' = 'Resolved from the image'
+                'org.opencontainers.image.version'     = '0.0.1'
                 'org.opencontainers.image.base.name'   = 'ghcr.io/example/base:1'
                 'org.opencontainers.image.ref.name'    = 'layout-only'
                 'unrelated.example/inherited'          = 'not published as an annotation'
             })
 
         $annotations -split "`n" | Should -Be @(
+            'index,manifest:org.opencontainers.image.version=0.0.1'
             'index,manifest:org.opencontainers.image.title=Package=service'
             'index,manifest:org.opencontainers.image.description=Resolved from the image'
             'manifest:org.opencontainers.image.base.name=ghcr.io/example/base:1'
@@ -299,6 +307,7 @@ Describe 'Container action preparation' {
     }
 
     It 'enforces build credentials according to push mode' {
+        $env:INPUT_TAG = 'build-abcdef'
         $env:INPUT_VERSION = '1.2.3'
         $env:INPUT_PUSH = 'true'
 
@@ -314,6 +323,7 @@ Describe 'Container action preparation' {
     }
 
     It 'rejects metacharacters and control characters in image coordinates' {
+        $env:INPUT_TAG = 'build-abcdef'
         $env:INPUT_VERSION = '1.0.0'
         $env:INPUT_IMAGE_REPOSITORY = 'owner/repo;echo'
 
@@ -324,7 +334,7 @@ Describe 'Container action preparation' {
     }
 
     It 'constructs the same normalized reference for read-only inspection' {
-        $env:INPUT_VERSION = 'BUILD-ABCDEF'
+        $env:INPUT_TAG = 'BUILD-ABCDEF'
         $env:INPUT_COMPONENT = 'API'
         $env:INPUT_REGISTRY = 'GHCR.IO'
 
@@ -335,7 +345,7 @@ Describe 'Container action preparation' {
     }
 
     It 'requires optional inspection credentials as a pair' {
-        $env:INPUT_VERSION = '1.2.3'
+        $env:INPUT_TAG = 'build-abcdef'
         $env:INPUT_USERNAME = 'user'
 
         { Initialize-ContainerImageInspection } | Should -Throw '*provided together*'
@@ -420,8 +430,8 @@ Describe 'Container action preparation' {
     }
 
     It 'normalizes identical image coordinates across build, inspection, and promotion' {
-        $env:INPUT_VERSION = 'BUILD-AbCd'
-        $env:INPUT_TAG = $env:INPUT_VERSION
+        $env:INPUT_TAG = 'BUILD-AbCd'
+        $env:INPUT_VERSION = '0.0.1'
         $env:INPUT_SOURCE_DIGEST = 'sha256:' + ('a' * 64)
         $env:INPUT_COMPONENT = 'API'
         $env:INPUT_REGISTRY = 'REGISTRY.Example.COM:5000'

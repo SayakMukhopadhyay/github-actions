@@ -1,8 +1,11 @@
 name: Container Build Push
 description: Build a container and optionally push it to a caller-selected registry
 inputs:
-  version:
+  tag:
     description: Container image tag to build
+    required: true
+  version:
+    description: Packaged application version for OCI metadata
     required: true
   registry:
     description: OCI registry host
@@ -71,6 +74,7 @@ runs:
       shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
+        INPUT_TAG: ${{ inputs.tag }}
         INPUT_VERSION: ${{ inputs.version }}
         INPUT_COMPONENT: ${{ inputs.component }}
         INPUT_REGISTRY: ${{ inputs.registry }}

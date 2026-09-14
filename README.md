@@ -159,6 +159,8 @@ steps:
 
   - uses: SayakMukhopadhyay/github-actions/container-build-push@v1
     with:
+      tag: build-${{ github.sha }}
+      version: ${{ env.VERSION }}
       registry: ${{ vars.ACR_LOGIN_SERVER }}
       image-repository: andromeda/docs
       username: ${{ steps.acr.outputs.username }}
@@ -171,13 +173,14 @@ Output `username` is the ACR token username `00000000-0000-0000-0000-00000000000
 
 ## `container-build-push`
 
-`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes exactly one reference, `registry/image-repository[/component]:version`. It forwards optional multiline `build-args`, `build-contexts`, `cache-from`, and `cache-to` settings to Docker Buildx and passes the optional `auth-token` input to BuildKit safely. When `push` is true, it logs in normally and inspects that exact reference: an existing reference skips every build and returns its manifest digest, while an absent reference is built and pushed once. When `push` is false, no registry probe occurs and the local build runs as before.
+`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes exactly one reference, `registry/image-repository[/component]:tag`. The required `tag` selects only that registry reference, while the required `version` supplies the packaged application version recorded as `org.opencontainers.image.version`. It forwards optional multiline `build-args`, `build-contexts`, `cache-from`, and `cache-to` settings to Docker Buildx and passes the optional `auth-token` input to BuildKit safely. When `push` is true, it logs in normally and inspects that exact reference: an existing reference skips every build and returns its manifest digest, while an absent reference is built and pushed once. When `push` is false, no registry probe occurs and the local build runs as before.
 
 ```yaml
 - id: image
   uses: SayakMukhopadhyay/github-actions/container-build-push@v1
   with:
-    version: build-${{ github.sha }}
+    tag: build-${{ github.sha }}
+    version: 0.0.1
     registry: ghcr.io
     image-repository: ${{ github.repository }}
     working-directory: .
@@ -207,13 +210,13 @@ For publication, provide `username` and `password` (the password may be `github.
 
 ## `container-image-inspect`
 
-`SayakMukhopadhyay/github-actions/container-image-inspect@v1` performs a read-only lookup of exactly one normalized `registry/image-repository[/component]:version` reference. It never builds, pushes, promotes, or tags an image.
+`SayakMukhopadhyay/github-actions/container-image-inspect@v1` performs a read-only lookup of exactly one normalized `registry/image-repository[/component]:tag` reference. It never builds, pushes, promotes, or tags an image.
 
 ```yaml
 - id: image
   uses: SayakMukhopadhyay/github-actions/container-image-inspect@v1
   with:
-    version: build-${{ github.sha }}
+    tag: build-${{ github.sha }}
     registry: ghcr.io
     image-repository: ${{ github.repository }}
     username: ${{ github.actor }}

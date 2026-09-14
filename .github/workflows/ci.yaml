@@ -107,7 +107,8 @@ jobs:
       - name: Build fixture container
         uses: $/container-build-push
         with:
-          version: ci
+          tag: build-ci
+          version: 0.0.1
           working-directory: tests/fixtures/go-chart
           build-contexts: |
             fixture=tests/fixtures/go-chart

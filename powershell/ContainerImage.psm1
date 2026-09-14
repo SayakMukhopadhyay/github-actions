@@ -64,7 +64,7 @@ function New-ContainerTagReference {
 
     $tag = Assert-SingleLine $Tag tag
     if ($tag -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$') {
-        throw 'Invalid container version tag'
+        throw 'Invalid container tag'
     }
     '{0}:{1}' -f $ImageName, $tag
 }
@@ -86,7 +86,7 @@ function New-ContainerDigestReference {
 function Resolve-ContainerImageReference {
     [CmdletBinding()]
     param(
-        [AllowEmptyString()] [string] $Version,
+        [AllowEmptyString()] [string] $Tag,
         [AllowEmptyString()] [string] $Component,
         [AllowEmptyString()] [string] $Registry,
         [AllowEmptyString()] [string] $ImageRepository,
@@ -100,7 +100,7 @@ function Resolve-ContainerImageReference {
         SourceRepository = $SourceRepository
     }
     $imageName = Resolve-ContainerImageName @coordinates
-    New-ContainerTagReference -ImageName $imageName -Tag $Version
+    New-ContainerTagReference -ImageName $imageName -Tag $Tag
 }
 
 function Write-ContainerImageState {

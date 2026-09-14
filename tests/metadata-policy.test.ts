@@ -132,6 +132,7 @@ void test('consumer action metadata is complete and uses safe runtime boundaries
 
 void test('container build metadata derives publication annotations from an identical local build', () => {
   const metadata = readAction('container-build-push');
+  const prepare = (metadata.runs?.steps ?? []).find((step) => step.id === 'prepare');
 
   for (const input of ['build-contexts', 'build-args', 'cache-from', 'cache-to']) {
     assert.equal(metadata.inputs?.[input]?.required, false, `${input} is optional`);
@@ -176,7 +177,10 @@ void test('container build metadata derives publication annotations from an iden
   assert.equal(buildSteps[2]?.with?.['cache-to'], '${{ inputs.cache-to }}');
   assert.equal(buildSteps[2]?.with?.annotations, '${{ steps.inspect.outputs.annotations }}');
 
+  assert.equal(metadata.inputs?.tag?.required, true);
   assert.equal(metadata.inputs?.version?.required, true);
+  assert.equal(prepare?.env?.INPUT_TAG, '${{ inputs.tag }}');
+  assert.equal(prepare?.env?.INPUT_VERSION, '${{ inputs.version }}');
   assert.equal('mode' in (metadata.inputs ?? {}), false);
   assert.equal('tags' in (metadata.inputs ?? {}), false);
   assert.equal('source-reference' in (metadata.inputs ?? {}), false);
@@ -227,10 +231,11 @@ void test('container image inspection metadata is exact-reference and read-only'
     'image-repository',
     'password',
     'registry',
+    'tag',
     'username',
-    'version',
   ]);
-  assert.equal(metadata.inputs?.version?.required, true);
+  assert.equal(metadata.inputs?.tag?.required, true);
+  assert.equal('version' in (metadata.inputs ?? {}), false);
   assert.equal(metadata.inputs?.registry?.default, 'ghcr.io');
   assert.equal(metadata.inputs?.['image-repository']?.default, '');
   assert.deepEqual(Object.keys(metadata.outputs ?? {}).sort(), ['exists', 'image-digest', 'image-reference']);
@@ -239,6 +244,9 @@ void test('container image inspection metadata is exact-reference and read-only'
   assert.equal(metadata.outputs?.['image-digest']?.value, '${{ steps.inspect.outputs.image-digest }}');
 
   const steps = metadata.runs?.steps ?? [];
+  const prepare = steps.find((step) => step.id === 'prepare');
+  assert.equal(prepare?.env?.INPUT_TAG, '${{ inputs.tag }}');
+  assert.equal('INPUT_VERSION' in (prepare?.env ?? {}), false);
   assert.equal(
     steps.some((step) => String(step.uses).startsWith('docker/build-push-action@')),
     false,
@@ -412,6 +420,7 @@ void test('action families use shared coordinates, OCI probing, and GitOps trans
 void test('registry-aware action metadata uses consistent grouping and credential language', () => {
   const expectedInputOrder: Record<string, string[]> = {
     'container-build-push': [
+      'tag',
       'version',
       'registry',
       'image-repository',
@@ -426,7 +435,7 @@ void test('registry-aware action metadata uses consistent grouping and credentia
       'cache-from',
       'cache-to',
     ],
-    'container-image-inspect': ['version', 'registry', 'image-repository', 'component', 'username', 'password'],
+    'container-image-inspect': ['tag', 'registry', 'image-repository', 'component', 'username', 'password'],
     'container-promote': ['source-digest', 'tag', 'registry', 'image-repository', 'component', 'username', 'password'],
     'helm-package-push': [
       'development',
@@ -694,6 +703,7 @@ void test('CI exercises one container tag and multiline build inputs through the
   assert.equal('annotations' in (fixtures[0]?.with ?? {}), false);
   assert.equal(fixtures[0]?.with?.['cache-from'], 'type=gha,scope=github-actions-container-fixture\n');
   assert.equal(fixtures[0]?.with?.['cache-to'], 'type=gha,mode=max,scope=github-actions-container-fixture\n');
-  assert.equal(fixtures[0]?.with?.version, 'ci');
+  assert.equal(fixtures[0]?.with?.tag, 'build-ci');
+  assert.equal(fixtures[0]?.with?.version, '0.0.1');
   assert.equal('tags' in (fixtures[0]?.with ?? {}), false);
 });

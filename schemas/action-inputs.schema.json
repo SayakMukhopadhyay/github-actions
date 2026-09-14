@@ -246,9 +246,13 @@
                       "with": {
                         "type": "object",
                         "properties": {
-                          "version": {
+                          "tag": {
                             "type": ["string", "number", "boolean"],
                             "description": "Container image tag to build"
+                          },
+                          "version": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Packaged application version for OCI metadata"
                           },
                           "registry": {
                             "type": ["string", "number", "boolean"],
@@ -312,7 +316,7 @@
                           }
                         },
                         "additionalProperties": false,
-                        "required": ["version"]
+                        "required": ["tag", "version"]
                       }
                     },
                     "required": ["with"]
@@ -330,7 +334,7 @@
                       "with": {
                         "type": "object",
                         "properties": {
-                          "version": {
+                          "tag": {
                             "type": ["string", "number", "boolean"],
                             "description": "Container image tag to inspect"
                           },
@@ -361,7 +365,7 @@
                           }
                         },
                         "additionalProperties": false,
-                        "required": ["version"]
+                        "required": ["tag"]
                       }
                     },
                     "required": ["with"]

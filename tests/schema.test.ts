@@ -74,8 +74,8 @@ void test('accepts valid inputs for each documented consumer action', async () =
         'login-server': '${{ vars.ACR_LOGIN_SERVER }}',
       },
     ],
-    ['container-build-push', { version: 'build-abcdef' }],
-    ['container-image-inspect', { version: 'build-abcdef' }],
+    ['container-build-push', { tag: 'build-abcdef', version: '0.0.1' }],
+    ['container-image-inspect', { tag: 'build-abcdef' }],
     [
       'container-promote',
       {
@@ -217,6 +217,33 @@ void test('rejects missing required container promotion credentials', async () =
       workflowFor('SayakMukhopadhyay/github-actions/container-promote@v1', {
         'source-digest': 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         tag: 'v1.2.3',
+      }),
+    ),
+    false,
+  );
+});
+
+void test('enforces distinct container build tag and version inputs without inspection aliases', async () => {
+  assert.equal(
+    await validateWorkflow(
+      workflowFor('SayakMukhopadhyay/github-actions/container-build-push@v1', {
+        version: '0.0.1',
+      }),
+    ),
+    false,
+  );
+  assert.equal(
+    await validateWorkflow(
+      workflowFor('SayakMukhopadhyay/github-actions/container-build-push@v1', {
+        tag: 'build-abcdef',
+      }),
+    ),
+    false,
+  );
+  assert.equal(
+    await validateWorkflow(
+      workflowFor('SayakMukhopadhyay/github-actions/container-image-inspect@v1', {
+        version: 'build-abcdef',
       }),
     ),
     false,

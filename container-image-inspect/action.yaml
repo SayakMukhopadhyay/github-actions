@@ -1,7 +1,7 @@
 name: Container Image Inspect
 description: Inspect one exact container image reference without mutating registry state
 inputs:
-  version:
+  tag:
     description: Container image tag to inspect
     required: true
   registry:
@@ -42,7 +42,7 @@ runs:
       shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
-        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_TAG: ${{ inputs.tag }}
         INPUT_COMPONENT: ${{ inputs.component }}
         INPUT_REGISTRY: ${{ inputs.registry }}
         INPUT_IMAGE_REPOSITORY: ${{ inputs.image-repository }}
