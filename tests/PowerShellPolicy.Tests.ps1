@@ -108,4 +108,23 @@ Describe 'PowerShell migration policy' {
             $source | Should -Match ([regex]::Escape($entry.Value))
         }
     }
+
+    It 'keeps container-build-push responsibilities in focused action-local modules' {
+        $root = Join-Path $PSScriptRoot '..'
+        $moduleByEntrypoint = [ordered]@{
+            'prepare-build.ps1' = 'ContainerBuild.psm1'
+            'inspect-image.ps1' = 'ContainerInspectionImage.psm1'
+            'verify-image.ps1'  = 'ContainerPublicationVerification.psm1'
+            'cleanup-image.ps1' = 'ContainerInspectionImage.psm1'
+        }
+
+        foreach ($entry in $moduleByEntrypoint.GetEnumerator()) {
+            $source = Get-Content -Raw (Join-Path $root "container-build-push/$($entry.Key)")
+
+            $source | Should -Match ([regex]::Escape($entry.Value))
+        }
+
+        $buildModule = Get-Content -Raw (Join-Path $root 'container-build-push/ContainerBuild.psm1')
+        $buildModule | Should -Not -Match 'Read-LocalImageMetadata|Confirm-PublishedImageMetadata|Remove-LocalInspectionImage'
+    }
 }

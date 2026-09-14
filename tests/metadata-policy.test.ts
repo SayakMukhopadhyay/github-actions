@@ -130,24 +130,51 @@ void test('consumer action metadata is complete and uses safe runtime boundaries
   }
 });
 
-void test('container build metadata keeps one version tag, exact forwarding, and push-only digest output', () => {
+void test('container build metadata derives publication annotations from an identical local build', () => {
   const metadata = readAction('container-build-push');
 
   for (const input of ['build-contexts', 'build-args', 'cache-from', 'cache-to']) {
     assert.equal(metadata.inputs?.[input]?.required, false, `${input} is optional`);
     assert.equal(metadata.inputs?.[input]?.default, '', `${input} has an empty default`);
   }
+  assert.equal('annotations' in (metadata.inputs ?? {}), false);
 
   const buildSteps = (metadata.runs?.steps ?? []).filter(
     (step) => typeof step.uses === 'string' && step.uses.startsWith('docker/build-push-action@'),
   );
-  assert.equal(buildSteps.length, 1);
-  assert.equal(buildSteps[0]?.with?.['build-contexts'], '${{ inputs.build-contexts }}');
-  assert.equal(buildSteps[0]?.with?.['build-args'], '${{ inputs.build-args }}');
-  assert.equal(buildSteps[0]?.with?.['cache-from'], '${{ inputs.cache-from }}');
-  assert.equal(buildSteps[0]?.with?.['cache-to'], '${{ inputs.cache-to }}');
+  assert.equal(buildSteps.length, 3);
+  const sharedBuildInputs = [
+    'builder',
+    'context',
+    'build-contexts',
+    'build-args',
+    'cache-from',
+    'secrets',
+    'pull',
+    'labels',
+  ];
+  for (const input of sharedBuildInputs) {
+    assert.deepEqual(
+      buildSteps.map((step) => step.with?.[input]),
+      Array(3).fill(buildSteps[0]?.with?.[input]),
+      `${input} is identical across every build pass`,
+    );
+  }
+  assert.equal(buildSteps[0]?.if, "inputs.push != 'true'");
   assert.equal(buildSteps[0]?.with?.tags, '${{ steps.prepare.outputs.image-reference }}');
-  assert.equal(buildSteps[0]?.if, "inputs.push != 'true' || steps.probe.outputs.exists != 'true'");
+  assert.equal(buildSteps[0]?.with?.['cache-to'], '${{ inputs.cache-to }}');
+  assert.equal(buildSteps[1]?.if, "inputs.push == 'true' && steps.probe.outputs.exists != 'true'");
+  assert.equal(buildSteps[1]?.with?.tags, '${{ steps.prepare.outputs.inspection-reference }}');
+  assert.equal(buildSteps[1]?.with?.load, true);
+  assert.equal(buildSteps[1]?.with?.push, false);
+  assert.equal(buildSteps[1]?.with?.provenance, false);
+  assert.equal(buildSteps[1]?.with?.['cache-to'], undefined);
+  assert.equal(buildSteps[2]?.if, "inputs.push == 'true' && steps.probe.outputs.exists != 'true'");
+  assert.equal(buildSteps[2]?.with?.tags, '${{ steps.prepare.outputs.image-reference }}');
+  assert.equal(buildSteps[2]?.with?.push, true);
+  assert.equal(buildSteps[2]?.with?.provenance, 'mode=min,oci-artifact=true');
+  assert.equal(buildSteps[2]?.with?.['cache-to'], '${{ inputs.cache-to }}');
+  assert.equal(buildSteps[2]?.with?.annotations, '${{ steps.inspect.outputs.annotations }}');
 
   assert.equal(metadata.inputs?.version?.required, true);
   assert.equal('mode' in (metadata.inputs ?? {}), false);
@@ -156,14 +183,27 @@ void test('container build metadata keeps one version tag, exact forwarding, and
   assert.equal(metadata.outputs?.['image-reference']?.value, '${{ steps.prepare.outputs.image-reference }}');
   assert.equal(
     metadata.outputs?.['image-digest']?.value,
-    "${{ inputs.push == 'true' && (steps.probe.outputs.image-digest || steps.build.outputs.digest) || '' }}",
+    "${{ inputs.push == 'true' && (steps.probe.outputs.image-digest || steps.publish.outputs.digest) || '' }}",
   );
   assert.deepEqual(Object.keys(metadata.outputs ?? {}).sort(), ['image-digest', 'image-reference']);
 
-  const probe = (metadata.runs?.steps ?? []).find((step) => step.id === 'probe');
+  const steps = metadata.runs?.steps ?? [];
+  const probe = steps.find((step) => step.id === 'probe');
   assert.equal(probe?.if, "inputs.push == 'true'");
   assert.equal(probe?.env?.IMAGE_REFERENCE, '${{ steps.prepare.outputs.image-reference }}');
   assert.match(String(probe?.run), /probe-image\.ps1/u);
+  const buildxIndex = steps.findIndex((step) => String(step.uses).startsWith('docker/setup-buildx-action@'));
+  const buildx = steps[buildxIndex];
+  assert.ok(steps.findIndex((step) => step.id === 'probe') < buildxIndex);
+  assert.equal(buildx?.if, "inputs.push != 'true' || steps.probe.outputs.exists != 'true'");
+
+  const inspect = (metadata.runs?.steps ?? []).find((step) => step.id === 'inspect');
+  assert.match(String(inspect?.run), /inspect-image\.ps1/u);
+  const verify = (metadata.runs?.steps ?? []).find((step) => step.name === 'Verify published image metadata');
+  assert.match(String(verify?.run), /verify-image\.ps1/u);
+  const cleanup = (metadata.runs?.steps ?? []).find((step) => step.name === 'Remove local metadata inspection image');
+  assert.match(String(cleanup?.if), /always\(\)/u);
+  assert.match(String(cleanup?.run), /cleanup-image\.ps1/u);
 });
 
 void test('bump-version requires an explicit increment at every action boundary', () => {
@@ -651,6 +691,7 @@ void test('CI exercises one container tag and multiline build inputs through the
     'fixture=tests/fixtures/go-chart\nsecondary=tests/fixtures/go-chart\n',
   );
   assert.equal(fixtures[0]?.with?.['build-args'], 'VERSION=fixture-version\nCOMMIT=fixture-commit\n');
+  assert.equal('annotations' in (fixtures[0]?.with ?? {}), false);
   assert.equal(fixtures[0]?.with?.['cache-from'], 'type=gha,scope=github-actions-container-fixture\n');
   assert.equal(fixtures[0]?.with?.['cache-to'], 'type=gha,mode=max,scope=github-actions-container-fixture\n');
   assert.equal(fixtures[0]?.with?.version, 'ci');

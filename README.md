@@ -171,7 +171,7 @@ Output `username` is the ACR token username `00000000-0000-0000-0000-00000000000
 
 ## `container-build-push`
 
-`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes exactly one reference, `registry/image-repository[/component]:version`. It forwards optional multiline `build-args`, `build-contexts`, `cache-from`, and `cache-to` inputs unchanged to Docker Buildx and passes the optional `auth-token` input to BuildKit safely. When `push` is true, it logs in normally and inspects that exact reference: an existing reference skips the build and returns its manifest digest, while an absent reference is built and pushed once. When `push` is false, no registry probe occurs and the local build runs as before.
+`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes exactly one reference, `registry/image-repository[/component]:version`. It forwards optional multiline `build-args`, `build-contexts`, `cache-from`, and `cache-to` settings to Docker Buildx and passes the optional `auth-token` input to BuildKit safely. When `push` is true, it logs in normally and inspects that exact reference: an existing reference skips every build and returns its manifest digest, while an absent reference is built and pushed once. When `push` is false, no registry probe occurs and the local build runs as before.
 
 ```yaml
 - id: image
@@ -189,6 +189,10 @@ Output `username` is the ACR token username `00000000-0000-0000-0000-00000000000
 ```
 
 Outputs are the single normalized `image-reference` and the Buildx `image-digest`. When `push: 'false'`, the build still runs and `image-digest` is empty. Build arguments are not secrets: use `auth-token` for the supported BuildKit secret and never put credentials in `build-args`.
+
+For a missing published reference, the action performs two runner-native builds with the same Buildx builder and identical default Dockerfile, final stage, context, build contexts, arguments, secret, cache imports, pull, and label inputs. The first build loads an unpublishable throwaway tag with provenance disabled. The action reads the completed image's standard Docker configuration, converts only recognized `org.opencontainers.image.*` labels into OCI annotations, then reuses the builder's internal cache for the final push with provenance enabled; any requested external cache export runs only on the final pass. Package labels are attached to the root index and runnable manifest; `org.opencontainers.image.base.name` and `org.opencontainers.image.base.digest` remain manifest-only. The layout-descriptor-specific `org.opencontainers.image.ref.name` label is not promoted. The final registry image is checked against the complete inspected label snapshot before success, and the local throwaway tag is always removed.
+
+The Dockerfile and resolved build result remain authoritative: callers do not pass annotations or repeat Dockerfile labels. Annotation values may contain `=`, but allowlisted values containing line breaks, control/separator characters, or leading/trailing whitespace fail closed because Buildx cannot preserve them as one unambiguous annotation.
 
 Callers can independently select any Buildx-supported external cache backend. For example, two source-only builds can share content-addressed layers through GitHub Actions cache without sharing generated files or workflow artifacts:
 
@@ -220,7 +224,7 @@ Outputs are `image-reference`, `exists`, and `image-digest`. The digest is a val
 
 ## `container-promote`
 
-`SayakMukhopadhyay/github-actions/container-promote@v1` creates one target tag for an already-published image. It constructs `registry/image-repository[/component]@source-digest` and asks Docker Buildx to create `registry/image-repository[/component]:tag` directly from that registry digest. It does not pull or rebuild the image, inspect existing tags, enforce immutability, or verify the result after the registry command succeeds.
+`SayakMukhopadhyay/github-actions/container-promote@v1` creates one target tag for an already-published image. It constructs `registry/image-repository[/component]@source-digest` and asks Docker Buildx to create `registry/image-repository[/component]:tag` directly from that registry digest. The command supplies exactly one source, so an OCI image index is copied with its root annotations, platform manifests, and provenance descriptors intact. It does not pull or rebuild the image, inspect existing tags, enforce immutability, or verify the result after the registry command succeeds.
 
 ```yaml
 - uses: SayakMukhopadhyay/github-actions/container-promote@v1
