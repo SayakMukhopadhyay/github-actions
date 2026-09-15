@@ -73,7 +73,7 @@ steps:
       helm: 'true'
 ```
 
-`increment` accepts `patch`, `minor`, or `major`. The action validates consistency first, implements increments internally, stages only selected files, commits with the GitHub Actions bot identity, and pushes without force.
+`increment` accepts `patch`, `minor`, or `major`. The action validates consistency first, implements increments internally, and stages only selected files. It then atomically publishes the complete allowlist with GitHub GraphQL `createCommitOnBranch`, using the checked-out HEAD as `expectedHeadOid` so branch races fail closed. GitHub authors and signs the commit for the authenticated token identity; the action requires the returned signature to be valid and GitHub-generated and verifies that the updated branch points to the returned commit. Because checkout credentials are not persisted, the `token` is used only for checkout and the publication request. Callers that need the resulting push to start another workflow must supply a GitHub App installation token or personal access token rather than the workflow's `GITHUB_TOKEN`.
 
 ## `checkout-dependencies`
 

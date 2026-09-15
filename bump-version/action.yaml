@@ -1,5 +1,5 @@
 name: Bump Version
-description: Bump selected project version metadata, commit it, and push it
+description: Bump selected project version metadata and publish a verified commit
 inputs:
   token:
     description: Token with contents write permission for the application repository
@@ -23,13 +23,13 @@ runs:
   using: composite
   steps:
     - name: Checkout current branch
-      # actions/checkout v7.0.1. Credentials are required by this action's immediate push.
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # zizmor: ignore[artipacked] intentional
+      # actions/checkout v7.0.1. Publication uses the token through GitHub's GraphQL API.
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ github.ref_name }}
         fetch-depth: 0
         fetch-tags: false
-        persist-credentials: true
+        persist-credentials: false
         token: ${{ inputs.token }}
     - name: Verify clean checkout
       shell: pwsh
@@ -44,14 +44,16 @@ runs:
         working-directory: ${{ inputs.working-directory }}
         helm: ${{ inputs.helm }}
         go: ${{ inputs.go }}
-    - name: Commit and push versions
+    - name: Publish verified version commit
       shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
+        INPUT_TOKEN: ${{ inputs.token }}
         INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         INPUT_HELM: ${{ inputs.helm }}
         INPUT_GO: ${{ inputs.go }}
         NEW_APPLICATION_VERSION: ${{ steps.mutate.outputs.application-version }}
         NEW_CHART_VERSION: ${{ steps.mutate.outputs.chart-version }}
+        TARGET_REPOSITORY: ${{ github.repository }}
         TARGET_REF: ${{ github.ref_name }}
       run: '& "$env:ACTION_PATH/git-transaction.ps1" commit'

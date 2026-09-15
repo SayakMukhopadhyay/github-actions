@@ -221,6 +221,13 @@ void test('bump-version requires an explicit increment at every action boundary'
   assert.equal('default' in (privateMetadata.inputs?.increment ?? {}), false);
   assert.match(implementation, /core\.getInput\('increment', \{ required: true \}\)/u);
   assert.doesNotMatch(implementation, /increment:\s*core\.getInput\('increment'\)\s*\|\|/u);
+
+  const steps = publicMetadata.runs?.steps ?? [];
+  const checkout = steps.find((step) => step.name === 'Checkout current branch');
+  const publish = steps.find((step) => step.name === 'Publish verified version commit');
+  assert.equal(checkout?.with?.['persist-credentials'], false);
+  assert.equal(publish?.env?.INPUT_TOKEN, '${{ inputs.token }}');
+  assert.equal(publish?.env?.TARGET_REPOSITORY, '${{ github.repository }}');
 });
 
 void test('create-release requires and isolates an explicit latest policy', () => {

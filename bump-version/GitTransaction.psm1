@@ -15,6 +15,133 @@ function Assert-Contained([string] $Parent, [string] $Child, [string] $Label) {
     }
 }
 
+function Get-RequiredProperty([object] $Object, [string] $Name, [string] $Label) {
+    if ($null -eq $Object) {
+        throw "GitHub GraphQL response omitted $Label"
+    }
+
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property -or $null -eq $property.Value) {
+        throw "GitHub GraphQL response omitted $Label"
+    }
+
+    $property.Value
+}
+
+function Invoke-GitHubCommit(
+    [string] $Repository,
+    [string] $Branch,
+    [string] $ExpectedHeadOid,
+    [string] $Message,
+    [string[]] $Paths,
+    [string] $Workspace,
+    [string] $Token
+) {
+    $additions = @(
+        foreach ($path in $Paths) {
+            $absolutePath = Join-Path $Workspace $path
+            [ordered]@{
+                path     = $path
+                contents = [Convert]::ToBase64String([IO.File]::ReadAllBytes($absolutePath))
+            }
+        }
+    )
+    $query = @'
+mutation CreateVerifiedCommit($input: CreateCommitOnBranchInput!) {
+  createCommitOnBranch(input: $input) {
+    commit {
+      oid
+      signature {
+        isValid
+        state
+        wasSignedByGitHub
+      }
+    }
+    ref {
+      target {
+        oid
+      }
+    }
+  }
+}
+'@
+    $requestBody = [ordered]@{
+        query     = $query
+        variables = [ordered]@{
+            input = [ordered]@{
+                branch          = [ordered]@{
+                    repositoryNameWithOwner = $Repository
+                    branchName              = $Branch
+                }
+                expectedHeadOid = $ExpectedHeadOid
+                fileChanges     = [ordered]@{
+                    additions = $additions
+                }
+                message         = [ordered]@{
+                    headline = $Message
+                }
+            }
+        }
+    } | ConvertTo-Json -Depth 10 -Compress
+    $headers = @{
+        Accept        = 'application/vnd.github+json'
+        Authorization = "Bearer $Token"
+        'User-Agent'  = 'SayakMukhopadhyay-bump-version-action'
+    }
+
+    $response = Invoke-RestMethod `
+        -Method Post `
+        -Uri 'https://api.github.com/graphql' `
+        -Headers $headers `
+        -ContentType 'application/json' `
+        -Body $requestBody
+
+    $errorsProperty = $response.PSObject.Properties['errors']
+    $errors = @(
+        if ($null -ne $errorsProperty) {
+            $errorsProperty.Value
+        }
+    )
+    if ($errors.Count) {
+        $messages = @(
+            $errors | ForEach-Object {
+                $messageProperty = $_.PSObject.Properties['message']
+                if ($null -eq $messageProperty -or -not $messageProperty.Value) {
+                    'unknown GraphQL error'
+                } else {
+                    [string] $messageProperty.Value
+                }
+            }
+        )
+        throw "GitHub rejected the version commit: $($messages -join '; ')"
+    }
+
+    $data = Get-RequiredProperty $response 'data' 'data'
+    $result = Get-RequiredProperty $data 'createCommitOnBranch' 'createCommitOnBranch result'
+    $commit = Get-RequiredProperty $result 'commit' 'created commit'
+    $commitOid = [string] (Get-RequiredProperty $commit 'oid' 'created commit OID')
+    if ($commitOid -notmatch '^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$') {
+        throw 'GitHub GraphQL response returned an invalid commit OID'
+    }
+
+    $signature = Get-RequiredProperty $commit 'signature' 'created commit signature'
+    $isValid = Get-RequiredProperty $signature 'isValid' 'signature validity'
+    $state = [string] (Get-RequiredProperty $signature 'state' 'signature state')
+    $wasSignedByGitHub = Get-RequiredProperty $signature 'wasSignedByGitHub' 'GitHub signature provenance'
+    if ($isValid -ne $true -or $state -ne 'VALID' -or $wasSignedByGitHub -ne $true) {
+        throw "GitHub did not return a valid GitHub-signed commit (state: $state)"
+    }
+
+    $ref = Get-RequiredProperty $result 'ref' 'updated branch ref'
+    $target = Get-RequiredProperty $ref 'target' 'updated branch target'
+    $branchOid = [string] (Get-RequiredProperty $target 'oid' 'updated branch OID')
+    if ($branchOid -ne $commitOid) {
+        throw 'GitHub returned a branch OID that does not match the created commit'
+    }
+
+    Write-Output "Published GitHub-verified commit $commitOid to $Repository@$Branch"
+}
+
 function Invoke-GitTransaction([ValidateSet('check-clean', 'commit')] [string] $Mode) {
     $workspaceValue = if ($env:GITHUB_WORKSPACE) {
         $env:GITHUB_WORKSPACE
@@ -103,11 +230,6 @@ function Invoke-GitTransaction([ValidateSet('check-clean', 'commit')] [string] $
             "feat: bump app version to $env:NEW_APPLICATION_VERSION"
         }
 
-        Invoke-NativeProcess git @('config', 'user.name', 'github-actions[bot]') | Out-Null
-        $botEmail = '41898282+github-actions[bot]@users.noreply.github.com'
-        Invoke-NativeProcess git @('config', 'user.email', $botEmail) | Out-Null
-        Invoke-NativeProcess git @('-c', 'commit.gpgsign=false', 'commit', '-m', $message) | Out-Null
-
         Assert-SingleLine $env:TARGET_REF 'current branch' | Out-Null
         $branchArguments = @('check-ref-format', '--branch', $env:TARGET_REF)
         $validBranch = Invoke-NativeProcess git $branchArguments -RawOutput -AllowFailure
@@ -115,7 +237,24 @@ function Invoke-GitTransaction([ValidateSet('check-clean', 'commit')] [string] $
             throw 'current branch is not a valid branch name'
         }
 
-        Invoke-NativeProcess git @('push', 'origin', "HEAD:refs/heads/$env:TARGET_REF") | Out-Null
+        $repository = Assert-SingleLine $env:TARGET_REPOSITORY 'target repository'
+        if ($repository -notmatch '^[^/\s]+/[^/\s]+$') {
+            throw 'target repository must use owner/name format'
+        }
+        $token = Assert-SingleLine $env:INPUT_TOKEN 'token'
+        $expectedHeadOid = Invoke-NativeProcess git @('rev-parse', '--verify', 'HEAD')
+        if ($expectedHeadOid -notmatch '^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$') {
+            throw 'checked-out HEAD is not a valid commit OID'
+        }
+
+        Invoke-GitHubCommit `
+            -Repository $repository `
+            -Branch $env:TARGET_REF `
+            -ExpectedHeadOid $expectedHeadOid `
+            -Message $message `
+            -Paths $expected `
+            -Workspace $workspace `
+            -Token $token
     } finally {
         Pop-Location
     }

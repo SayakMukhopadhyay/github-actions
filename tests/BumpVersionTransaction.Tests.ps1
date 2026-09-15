@@ -42,6 +42,39 @@ Describe 'Version bump Git transaction' {
                 Base   = Invoke-BumpGit $work @('rev-parse', 'HEAD')
             }
         }
+
+        function New-GitHubCommitResponse(
+            [string] $Oid,
+            [bool] $IsValid = $true,
+            [string] $State = 'VALID',
+            [bool] $WasSignedByGitHub = $true,
+            [AllowNull()][string] $BranchOid = $null
+        ) {
+            if ([string]::IsNullOrEmpty($BranchOid)) {
+                $BranchOid = $Oid
+            }
+
+            [pscustomobject]@{
+                errors = @()
+                data   = [pscustomobject]@{
+                    createCommitOnBranch = [pscustomobject]@{
+                        commit = [pscustomobject]@{
+                            oid       = $Oid
+                            signature = [pscustomobject]@{
+                                isValid           = $IsValid
+                                state             = $State
+                                wasSignedByGitHub = $WasSignedByGitHub
+                            }
+                        }
+                        ref    = [pscustomobject]@{
+                            target = [pscustomobject]@{
+                                oid = $BranchOid
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     BeforeEach {
@@ -49,15 +82,36 @@ Describe 'Version bump Git transaction' {
         $script:repository = New-BumpRepository $root
 
         $env:GITHUB_WORKSPACE = $script:repository.Work
+        $env:GITHUB_REPOSITORY = 'example/project'
+        $env:INPUT_TOKEN = 'test-token'
         $env:INPUT_WORKING_DIRECTORY = '.'
+        $env:TARGET_REPOSITORY = $env:GITHUB_REPOSITORY
         $env:TARGET_REF = 'main'
         $env:INPUT_GO = 'false'
         $env:INPUT_HELM = 'false'
         $env:NEW_APPLICATION_VERSION = $null
         $env:NEW_CHART_VERSION = $null
+
+        $global:BumpVersionGraphQLRequest = $null
+        $global:BumpVersionGraphQLResponse = New-GitHubCommitResponse ('a' * 40)
+        Mock Invoke-RestMethod -ModuleName GitTransaction {
+            $global:BumpVersionGraphQLRequest = @{
+                Method      = $Method
+                Uri         = $Uri
+                Headers     = $Headers
+                ContentType = $ContentType
+                Body        = $Body
+            }
+            $global:BumpVersionGraphQLResponse
+        }
     }
 
-    It 'commits exactly all three authorities for a combined Helm and Go bump' {
+    AfterEach {
+        Remove-Variable BumpVersionGraphQLRequest -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable BumpVersionGraphQLResponse -Scope Global -ErrorAction SilentlyContinue
+    }
+
+    It 'publishes exactly all three authorities atomically for a combined Helm and Go bump' {
         $env:INPUT_GO = 'true'
         $env:INPUT_HELM = 'true'
         $env:NEW_APPLICATION_VERSION = '1.1.0'
@@ -69,18 +123,36 @@ Describe 'Version bump Git transaction' {
 
         Invoke-GitTransaction commit
 
-        $paths = @(
-            Invoke-BumpGit $script:repository.Work @('show', '--format=', '--name-only', 'HEAD') |
-                Where-Object { $_ }
-        )
+        $request = $global:BumpVersionGraphQLRequest
+        $payload = $request.Body | ConvertFrom-Json
+        $input = $payload.variables.input
+        $paths = @($input.fileChanges.additions.path)
 
+        $request.Method | Should -Be Post
+        $request.Uri | Should -Be 'https://api.github.com/graphql'
+        $request.Headers.Authorization | Should -Be 'Bearer test-token'
+        $request.ContentType | Should -Be 'application/json'
+        $input.branch.repositoryNameWithOwner | Should -Be 'example/project'
+        $input.branch.branchName | Should -Be 'main'
+        $input.expectedHeadOid | Should -Be $script:repository.Base
+        $input.message.headline |
+            Should -Be 'feat: bump chart version to 1.1.0 and app version to 1.1.0'
+        @($input.PSObject.Properties.Name) |
+            Should -Be @('branch', 'expectedHeadOid', 'fileChanges', 'message')
+        @($input.message.PSObject.Properties.Name) | Should -Be @('headline')
         $paths.Count | Should -Be 3
         $paths | Should -Contain 'VERSION'
         $paths | Should -Contain 'charts/VERSION'
         $paths | Should -Contain 'charts/Chart.yaml'
+        foreach ($addition in $input.fileChanges.additions) {
+            $expectedBytes = [IO.File]::ReadAllBytes((Join-Path $script:repository.Work $addition.path))
+            $addition.contents | Should -Be ([Convert]::ToBase64String($expectedBytes))
+        }
+        (Invoke-BumpGit $script:repository.Work @('rev-parse', 'HEAD')) |
+            Should -Be $script:repository.Base
     }
 
-    It 'commits only Helm authorities for a chart-only bump' {
+    It 'publishes only Helm authorities for a chart-only bump' {
         $env:INPUT_HELM = 'true'
         $env:NEW_CHART_VERSION = '1.1.0'
 
@@ -89,16 +161,15 @@ Describe 'Version bump Git transaction' {
 
         Invoke-GitTransaction commit
 
-        $paths = @(
-            Invoke-BumpGit $script:repository.Work @('show', '--format=', '--name-only', 'HEAD') |
-                Where-Object { $_ }
-        )
+        $input = ($global:BumpVersionGraphQLRequest.Body | ConvertFrom-Json).variables.input
+        $paths = @($input.fileChanges.additions.path)
 
         $paths.Count | Should -Be 2
         $paths | Should -Not -Contain 'VERSION'
+        $input.message.headline | Should -Be 'feat: bump chart version to 1.1.0'
     }
 
-    It 'commits only the application authority for a Go-only bump' {
+    It 'publishes only the application authority for a Go-only bump' {
         $env:INPUT_GO = 'true'
         $env:NEW_APPLICATION_VERSION = '1.1.0'
 
@@ -106,15 +177,14 @@ Describe 'Version bump Git transaction' {
 
         Invoke-GitTransaction commit
 
-        $paths = @(
-            Invoke-BumpGit $script:repository.Work @('show', '--format=', '--name-only', 'HEAD') |
-                Where-Object { $_ }
-        )
+        $input = ($global:BumpVersionGraphQLRequest.Body | ConvertFrom-Json).variables.input
+        $paths = @($input.fileChanges.additions.path)
 
         $paths | Should -Be @('VERSION')
+        $input.message.headline | Should -Be 'feat: bump app version to 1.1.0'
     }
 
-    It 'does not force through a concurrent remote branch update' {
+    It 'uses the checked-out HEAD and fails closed when GitHub reports a branch race' {
         $concurrent = Join-Path $TestDrive 'concurrent'
 
         Invoke-BumpGit $TestDrive @('clone', $script:repository.Remote, $concurrent) | Out-Null
@@ -134,10 +204,44 @@ Describe 'Version bump Git transaction' {
         $env:INPUT_GO = 'true'
         $env:NEW_APPLICATION_VERSION = '1.1.0'
         Set-Content (Join-Path $script:repository.Work 'VERSION') '1.1.0'
+        $global:BumpVersionGraphQLResponse = [pscustomobject]@{
+            errors = @(
+                [pscustomobject]@{
+                    message = 'Expected branch to point to the supplied OID.'
+                }
+            )
+            data   = $null
+        }
 
-        { Invoke-GitTransaction commit } | Should -Throw
+        { Invoke-GitTransaction commit } | Should -Throw '*Expected branch to point*'
 
+        $input = ($global:BumpVersionGraphQLRequest.Body | ConvertFrom-Json).variables.input
+        $input.expectedHeadOid | Should -Be $script:repository.Base
         (Invoke-BumpGit $script:repository.Work @('ls-remote', 'origin', 'refs/heads/main')) |
             Should -Match $remoteHead
+    }
+
+    It 'fails closed when GitHub does not return a valid GitHub-generated signature' {
+        $env:INPUT_GO = 'true'
+        $env:NEW_APPLICATION_VERSION = '1.1.0'
+        Set-Content (Join-Path $script:repository.Work 'VERSION') '1.1.0'
+        $global:BumpVersionGraphQLResponse = New-GitHubCommitResponse `
+            -Oid ('b' * 40) `
+            -IsValid $false `
+            -State 'UNSIGNED' `
+            -WasSignedByGitHub $false
+
+        { Invoke-GitTransaction commit } | Should -Throw '*valid GitHub-signed commit*'
+    }
+
+    It 'fails closed when the returned branch does not point to the created commit' {
+        $env:INPUT_GO = 'true'
+        $env:NEW_APPLICATION_VERSION = '1.1.0'
+        Set-Content (Join-Path $script:repository.Work 'VERSION') '1.1.0'
+        $global:BumpVersionGraphQLResponse = New-GitHubCommitResponse `
+            -Oid ('b' * 40) `
+            -BranchOid ('c' * 40)
+
+        { Invoke-GitTransaction commit } | Should -Throw '*branch OID*'
     }
 }
