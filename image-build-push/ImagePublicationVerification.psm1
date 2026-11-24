@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1')
-Import-Module (Join-Path $PSScriptRoot 'ContainerMetadata.psm1')
+Import-Module (Join-Path $PSScriptRoot 'ImageMetadata.psm1')
 
 function Confirm-PublishedImageMetadata {
     $reference = Assert-SingleLine -Value $env:IMAGE_REFERENCE -Name 'image-reference'

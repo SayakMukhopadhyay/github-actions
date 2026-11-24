@@ -1,11 +1,8 @@
-name: Container Promote
-description: Create one tag for an existing container image digest
+name: Image Inspect
+description: Inspect one exact container image reference without mutating registry state
 inputs:
-  source-digest:
-    description: Published sha256 image digest to promote
-    required: true
   tag:
-    description: Target container tag to create
+    description: Container image tag to inspect
     required: true
   registry:
     description: OCI registry host
@@ -20,20 +17,31 @@ inputs:
     required: false
     default: ''
   username:
-    description: Registry username; required together with password
-    required: true
+    description: Optional registry username; must be provided together with password
+    required: false
+    default: ''
   password:
-    description: Registry password or token; required together with username
-    required: true
+    description: Optional registry password or token; must be provided together with username
+    required: false
+    default: ''
+outputs:
+  image-reference:
+    description: Normalized exact image reference inspected by the action
+    value: ${{ steps.prepare.outputs.image-reference }}
+  exists:
+    description: Whether the exact image reference exists in the registry
+    value: ${{ steps.inspect.outputs.exists }}
+  image-digest:
+    description: Validated sha256 manifest digest; empty when the exact reference is absent
+    value: ${{ steps.inspect.outputs.image-digest }}
 runs:
   using: composite
   steps:
     - id: prepare
-      name: Prepare image promotion
+      name: Prepare image inspection
       shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
-        INPUT_SOURCE_DIGEST: ${{ inputs.source-digest }}
         INPUT_TAG: ${{ inputs.tag }}
         INPUT_COMPONENT: ${{ inputs.component }}
         INPUT_REGISTRY: ${{ inputs.registry }}
@@ -41,19 +49,20 @@ runs:
         INPUT_USERNAME: ${{ inputs.username }}
         INPUT_PASSWORD: ${{ inputs.password }}
         SOURCE_REPOSITORY: ${{ github.repository }}
-      run: '& "$env:ACTION_PATH/prepare-promotion.ps1"'
+      run: '& "$env:ACTION_PATH/prepare-inspection.ps1"'
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
     - name: Log in to container registry
+      if: inputs.username != '' || inputs.password != ''
       uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
       with:
         registry: ${{ inputs.registry }}
         username: ${{ inputs.username }}
         password: ${{ inputs.password }}
-    - name: Create target image tag
+    - id: inspect
+      name: Inspect exact image reference
       shell: pwsh
       env:
         ACTION_PATH: ${{ github.action_path }}
-        SOURCE_REFERENCE: ${{ steps.prepare.outputs.source-reference }}
-        TARGET_REFERENCE: ${{ steps.prepare.outputs.target-reference }}
-      run: '& "$env:ACTION_PATH/promote.ps1"'
+        IMAGE_REFERENCE: ${{ steps.prepare.outputs.image-reference }}
+      run: '& "$env:ACTION_PATH/inspect-image.ps1"'

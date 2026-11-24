@@ -238,190 +238,6 @@
                 },
                 {
                   "if": {
-                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/container-build-push@v1" } },
-                    "required": ["uses"]
-                  },
-                  "then": {
-                    "properties": {
-                      "with": {
-                        "type": "object",
-                        "properties": {
-                          "tag": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Container image tag to build"
-                          },
-                          "version": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Packaged application version for OCI metadata"
-                          },
-                          "registry": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "OCI registry host",
-                            "default": "ghcr.io"
-                          },
-                          "image-repository": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Image repository below the registry; defaults to github.repository",
-                            "default": ""
-                          },
-                          "component": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional component appended to the image repository",
-                            "default": ""
-                          },
-                          "push": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Whether to publish the built image to the registry",
-                            "default": "true"
-                          },
-                          "username": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Registry username; required with password when push is true, otherwise optional only as a complete pair",
-                            "default": ""
-                          },
-                          "password": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Registry password or token; required with username when push is true, otherwise optional only as a complete pair",
-                            "default": ""
-                          },
-                          "working-directory": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Docker build context relative to the checkout",
-                            "default": "."
-                          },
-                          "auth-token": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional BuildKit secret named auth-token",
-                            "default": ""
-                          },
-                          "build-contexts": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Additional named Docker build contexts",
-                            "default": ""
-                          },
-                          "build-args": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional build arguments forwarded unchanged to Docker Buildx",
-                            "default": ""
-                          },
-                          "cache-from": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional newline-delimited external cache sources forwarded unchanged to Docker Buildx",
-                            "default": ""
-                          },
-                          "cache-to": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional newline-delimited external cache destinations forwarded unchanged to Docker Buildx",
-                            "default": ""
-                          }
-                        },
-                        "additionalProperties": false,
-                        "required": ["tag", "version"]
-                      }
-                    },
-                    "required": ["with"]
-                  }
-                },
-                {
-                  "if": {
-                    "properties": {
-                      "uses": { "const": "SayakMukhopadhyay/github-actions/container-image-inspect@v1" }
-                    },
-                    "required": ["uses"]
-                  },
-                  "then": {
-                    "properties": {
-                      "with": {
-                        "type": "object",
-                        "properties": {
-                          "tag": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Container image tag to inspect"
-                          },
-                          "registry": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "OCI registry host",
-                            "default": "ghcr.io"
-                          },
-                          "image-repository": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Image repository below the registry; defaults to github.repository",
-                            "default": ""
-                          },
-                          "component": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional component appended to the image repository",
-                            "default": ""
-                          },
-                          "username": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional registry username; must be provided together with password",
-                            "default": ""
-                          },
-                          "password": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional registry password or token; must be provided together with username",
-                            "default": ""
-                          }
-                        },
-                        "additionalProperties": false,
-                        "required": ["tag"]
-                      }
-                    },
-                    "required": ["with"]
-                  }
-                },
-                {
-                  "if": {
-                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/container-promote@v1" } },
-                    "required": ["uses"]
-                  },
-                  "then": {
-                    "properties": {
-                      "with": {
-                        "type": "object",
-                        "properties": {
-                          "source-digest": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Published sha256 image digest to promote"
-                          },
-                          "tag": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Target container tag to create"
-                          },
-                          "registry": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "OCI registry host",
-                            "default": "ghcr.io"
-                          },
-                          "image-repository": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Image repository below the registry; defaults to github.repository",
-                            "default": ""
-                          },
-                          "component": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Optional component appended to the image repository",
-                            "default": ""
-                          },
-                          "username": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Registry username; required together with password"
-                          },
-                          "password": {
-                            "type": ["string", "number", "boolean"],
-                            "description": "Registry password or token; required together with username"
-                          }
-                        },
-                        "additionalProperties": false,
-                        "required": ["source-digest", "tag", "username", "password"]
-                      }
-                    },
-                    "required": ["with"]
-                  }
-                },
-                {
-                  "if": {
                     "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/create-release@v1" } },
                     "required": ["uses"]
                   },
@@ -602,6 +418,188 @@
                         "additionalProperties": false
                       }
                     }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/image-build-push@v1" } },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "tag": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Container image tag to build"
+                          },
+                          "version": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Packaged application version for OCI metadata"
+                          },
+                          "registry": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "OCI registry host",
+                            "default": "ghcr.io"
+                          },
+                          "image-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Image repository below the registry; defaults to github.repository",
+                            "default": ""
+                          },
+                          "component": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional component appended to the image repository",
+                            "default": ""
+                          },
+                          "push": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Whether to publish the built image to the registry",
+                            "default": "true"
+                          },
+                          "username": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Registry username; required with password when push is true, otherwise optional only as a complete pair",
+                            "default": ""
+                          },
+                          "password": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Registry password or token; required with username when push is true, otherwise optional only as a complete pair",
+                            "default": ""
+                          },
+                          "working-directory": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Docker build context relative to the checkout",
+                            "default": "."
+                          },
+                          "auth-token": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional BuildKit secret named auth-token",
+                            "default": ""
+                          },
+                          "build-contexts": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Additional named Docker build contexts",
+                            "default": ""
+                          },
+                          "build-args": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional build arguments forwarded unchanged to Docker Buildx",
+                            "default": ""
+                          },
+                          "cache-from": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional newline-delimited external cache sources forwarded unchanged to Docker Buildx",
+                            "default": ""
+                          },
+                          "cache-to": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional newline-delimited external cache destinations forwarded unchanged to Docker Buildx",
+                            "default": ""
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["tag", "version"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/image-inspect@v1" } },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "tag": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Container image tag to inspect"
+                          },
+                          "registry": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "OCI registry host",
+                            "default": "ghcr.io"
+                          },
+                          "image-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Image repository below the registry; defaults to github.repository",
+                            "default": ""
+                          },
+                          "component": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional component appended to the image repository",
+                            "default": ""
+                          },
+                          "username": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional registry username; must be provided together with password",
+                            "default": ""
+                          },
+                          "password": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional registry password or token; must be provided together with username",
+                            "default": ""
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["tag"]
+                      }
+                    },
+                    "required": ["with"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": { "uses": { "const": "SayakMukhopadhyay/github-actions/image-promote@v1" } },
+                    "required": ["uses"]
+                  },
+                  "then": {
+                    "properties": {
+                      "with": {
+                        "type": "object",
+                        "properties": {
+                          "source-digest": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Published sha256 image digest to promote"
+                          },
+                          "tag": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Target image tag to create"
+                          },
+                          "registry": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "OCI registry host",
+                            "default": "ghcr.io"
+                          },
+                          "image-repository": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Image repository below the registry; defaults to github.repository",
+                            "default": ""
+                          },
+                          "component": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Optional component appended to the image repository",
+                            "default": ""
+                          },
+                          "username": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Registry username; required together with password"
+                          },
+                          "password": {
+                            "type": ["string", "number", "boolean"],
+                            "description": "Registry password or token; required together with username"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": ["source-digest", "tag", "username", "password"]
+                      }
+                    },
+                    "required": ["with"]
                   }
                 },
                 {

@@ -157,7 +157,7 @@ steps:
       subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       login-server: ${{ vars.ACR_LOGIN_SERVER }}
 
-  - uses: SayakMukhopadhyay/github-actions/container-build-push@v1
+  - uses: SayakMukhopadhyay/github-actions/image-build-push@v1
     with:
       tag: build-${{ github.sha }}
       version: ${{ env.VERSION }}
@@ -171,13 +171,13 @@ steps:
 
 Output `username` is the ACR token username `00000000-0000-0000-0000-000000000000`. Output `access-token` is the masked short-lived token. The action never prints the token as ordinary output and fails before publishing outputs if Azure CLI returns an empty token. Client, tenant, and subscription IDs are identifiers; callers should provide them through repository or environment variables and keep workflow permissions narrowly scoped.
 
-## `container-build-push`
+## `image-build-push`
 
-`SayakMukhopadhyay/github-actions/container-build-push@v1` builds and optionally publishes exactly one reference, `registry/image-repository[/component]:tag`. The required `tag` selects only that registry reference, while the required `version` supplies the packaged application version recorded as `org.opencontainers.image.version`. It forwards optional multiline `build-args`, `build-contexts`, `cache-from`, and `cache-to` settings to Docker Buildx and passes the optional `auth-token` input to BuildKit safely. When `push` is true, it logs in normally and inspects that exact reference: an existing reference skips every build and returns its manifest digest, while an absent reference is built and pushed once. When `push` is false, no registry probe occurs and the local build runs as before.
+`SayakMukhopadhyay/github-actions/image-build-push@v1` builds and optionally publishes exactly one reference, `registry/image-repository[/component]:tag`. The required `tag` selects only that registry reference, while the required `version` supplies the packaged application version recorded as `org.opencontainers.image.version`. It forwards optional multiline `build-args`, `build-contexts`, `cache-from`, and `cache-to` settings to Docker Buildx and passes the optional `auth-token` input to BuildKit safely. When `push` is true, it logs in normally and inspects that exact reference: an existing reference skips every build and returns its manifest digest, while an absent reference is built and pushed once. When `push` is false, no registry probe occurs and the local build runs as before.
 
 ```yaml
 - id: image
-  uses: SayakMukhopadhyay/github-actions/container-build-push@v1
+  uses: SayakMukhopadhyay/github-actions/image-build-push@v1
   with:
     tag: build-${{ github.sha }}
     version: 0.0.1
@@ -208,13 +208,13 @@ Both inputs also accept Docker Buildx's newline-delimited form for multiple cach
 
 For publication, provide `username` and `password` (the password may be `github.token`). GHCR requires `packages: write`. The mandatory push-time check uses Docker's registry-neutral manifest inspection and treats only the standard OCI `MANIFEST_UNKNOWN` and `NAME_UNKNOWN` responses as absent; authentication, network, invalid-reference, and other probe failures fail the action. This is existence-based idempotence, not client-side immutability or race locking; registry policy remains authoritative.
 
-## `container-image-inspect`
+## `image-inspect`
 
-`SayakMukhopadhyay/github-actions/container-image-inspect@v1` performs a read-only lookup of exactly one normalized `registry/image-repository[/component]:tag` reference. It never builds, pushes, promotes, or tags an image.
+`SayakMukhopadhyay/github-actions/image-inspect@v1` performs a read-only lookup of exactly one normalized `registry/image-repository[/component]:tag` reference. It never builds, pushes, promotes, or tags an image.
 
 ```yaml
 - id: image
-  uses: SayakMukhopadhyay/github-actions/container-image-inspect@v1
+  uses: SayakMukhopadhyay/github-actions/image-inspect@v1
   with:
     tag: build-${{ github.sha }}
     registry: ghcr.io
@@ -225,12 +225,12 @@ For publication, provide `username` and `password` (the password may be `github.
 
 Outputs are `image-reference`, `exists`, and `image-digest`. The digest is a validated `sha256` manifest digest when the exact reference exists and is empty when the registry reports the standard OCI `MANIFEST_UNKNOWN` or `NAME_UNKNOWN` result. Credentials are optional for anonymously readable registries, but `username` and `password` must be provided together. Authentication, transport, malformed manifest metadata, and all other unexpected probe failures fail closed.
 
-## `container-promote`
+## `image-promote`
 
-`SayakMukhopadhyay/github-actions/container-promote@v1` creates one target tag for an already-published image. It constructs `registry/image-repository[/component]@source-digest` and asks Docker Buildx to create `registry/image-repository[/component]:tag` directly from that registry digest. The command supplies exactly one source, so an OCI image index is copied with its root annotations, platform manifests, and provenance descriptors intact. It does not pull or rebuild the image, inspect existing tags, enforce immutability, or verify the result after the registry command succeeds.
+`SayakMukhopadhyay/github-actions/image-promote@v1` creates one target tag for an already-published image. It constructs `registry/image-repository[/component]@source-digest` and asks Docker Buildx to create `registry/image-repository[/component]:tag` directly from that registry digest. The command supplies exactly one source, so an OCI image index is copied with its root annotations, platform manifests, and provenance descriptors intact. It does not pull or rebuild the image, inspect existing tags, enforce immutability, or verify the result after the registry command succeeds.
 
 ```yaml
-- uses: SayakMukhopadhyay/github-actions/container-promote@v1
+- uses: SayakMukhopadhyay/github-actions/image-promote@v1
   with:
     source-digest: ${{ needs.publish.outputs.image-digest }}
     tag: v${{ needs.version.outputs.application-version }}
@@ -242,12 +242,12 @@ Outputs are `image-reference`, `exists`, and `image-digest`. The digest is a val
 
 The intended delivery sequence is:
 
-1. `container-build-push` publishes `build-<full SHA>` and returns its digest.
+1. `image-build-push` publishes `build-<full SHA>` and returns its digest.
 2. Development deploys that build tag and completes its health check.
-3. `container-promote` creates `v<VERSION>` from the proven digest.
+3. `image-promote` creates `v<VERSION>` from the proven digest.
 4. Production deploys the version tag and completes its health check.
 
-Registry authentication failures, rejected tag writes, and other Docker command failures fail the action normally. Registry-side configuration owns tag immutability. GHCR promotion requires `packages: write`; no OIDC permission is requested by either container action.
+Registry authentication failures, rejected tag writes, and other Docker command failures fail the action normally. Registry-side configuration owns tag immutability. GHCR promotion requires `packages: write`; no OIDC permission is requested by either image action.
 
 ## `helm-package-push`
 
@@ -266,7 +266,7 @@ Registry authentication failures, rejected tag writes, and other Docker command 
     password: ${{ github.token }}
 ```
 
-For development packages, `chart-version` is exactly `0.0.0-build-<full lowercase commit SHA from github.sha>` and is independent of `charts/VERSION`. Stable packages continue to use `charts/VERSION`. For publication, provide `username` and `password`. The mandatory push-time exact-reference check uses Helm's registry-neutral OCI lookup and the same fail-closed standard OCI not-found classification as the container action. Outputs are `chart-name` and `chart-version`.
+For development packages, `chart-version` is exactly `0.0.0-build-<full lowercase commit SHA from github.sha>` and is independent of `charts/VERSION`. Stable packages continue to use `charts/VERSION`. For publication, provide `username` and `password`. The mandatory push-time exact-reference check uses Helm's registry-neutral OCI lookup and the same fail-closed standard OCI not-found classification as the image action. Outputs are `chart-name` and `chart-version`.
 
 ## `chart-update-deploy`
 
@@ -435,7 +435,7 @@ The repository is one npm package and does not use workspaces. JavaScript action
 - `actions/bump-version/`, `actions/create-release/`, `actions/helm-package-push/`, and `actions/is-file-changed/` are private implementation actions invoked by their root-level composite wrappers.
 - `tooling/` contains repository-maintenance programs such as schema generation.
 
-`powershell/ActionRuntime.psm1` is intentionally narrow: native process execution, GitHub workflow protocol helpers, single-line validation, and contained temporary cleanup. `ContainerImage.psm1` owns normalized image names plus tag and digest references, `RegistryCredentials.psm1` owns the shared credential policy, `OciArtifactProbe.psm1` owns fail-closed artifact existence classification, and `GitOpsChartUpdate.psm1` owns the chart mutation, lint, commit, and safe retry transaction. Action-local modules remain thin adapters where family-specific inputs or messages differ.
+`powershell/ActionRuntime.psm1` is intentionally narrow: native process execution, GitHub workflow protocol helpers, single-line validation, and contained temporary cleanup. `ImageReference.psm1` owns normalized image names plus tag and digest references, `RegistryCredentials.psm1` owns the shared credential policy, `OciArtifactProbe.psm1` owns fail-closed artifact existence classification, and `GitOpsChartUpdate.psm1` owns the chart mutation, lint, commit, and safe retry transaction. Action-local modules remain thin adapters where family-specific inputs or messages differ.
 
 Install the exact locked Node dependencies, pinned PowerShell modules, and verified native tools with Node `24.20.0` and PowerShell 7.4 or newer:
 
@@ -465,7 +465,7 @@ Bootstrap remains explicit; validation never silently downloads dependencies or 
 
 TypeScript in this repository—production actions, tooling, and tests—must never spawn an external process. It may parse files and use JavaScript facilities such as the `RegExp` constructor. Git, Helm, `yq`, and GitHub CLI transactions belong in checked PowerShell modules or composite steps. Pester tests invoke those command boundaries directly and use real temporary Git repositories where transaction behavior matters.
 
-Node and Pester tests are hermetic and credential-free. They use temporary repositories, local charts, mocks, injected OpenAI clients, and captured GitHub output files. They never publish a container or chart, mutate a live remote, create a GitHub Release, call OpenAI, or contact a cluster.
+Node and Pester tests are hermetic and credential-free. They use temporary repositories, local charts, mocks, injected OpenAI clients, and captured GitHub output files. They never publish an image or chart, mutate a live remote, create a GitHub Release, call OpenAI, or contact a cluster.
 
 ## Generated artifacts
 

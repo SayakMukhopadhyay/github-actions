@@ -3,10 +3,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1')
-Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ContainerImage.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ImageReference.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'RegistryCredentials.psm1') -Force
 
-function Initialize-ContainerPromotion {
+function Initialize-ImagePromotion {
     Assert-RegistryCredentials `
         -RegistryUser $env:INPUT_USERNAME `
         -RegistrySecret $env:INPUT_PASSWORD `
@@ -18,15 +18,15 @@ function Initialize-ContainerPromotion {
         ImageRepository  = $env:INPUT_IMAGE_REPOSITORY
         SourceRepository = $env:SOURCE_REPOSITORY
     }
-    $imageName = Resolve-ContainerImageName @coordinates
-    $sourceReference = New-ContainerDigestReference -ImageName $imageName -Digest $env:INPUT_SOURCE_DIGEST
-    $targetReference = New-ContainerTagReference -ImageName $imageName -Tag $env:INPUT_TAG
+    $imageName = Resolve-ImageName @coordinates
+    $sourceReference = New-ImageDigestReference -ImageName $imageName -Digest $env:INPUT_SOURCE_DIGEST
+    $targetReference = New-ImageTagReference -ImageName $imageName -Tag $env:INPUT_TAG
 
     Write-GitHubOutput 'source-reference' $sourceReference
     Write-GitHubOutput 'target-reference' $targetReference
 }
 
-function Invoke-ContainerPromotion {
+function Invoke-ImagePromotion {
     $arguments = @(
         'buildx',
         'imagetools',
@@ -39,4 +39,4 @@ function Invoke-ContainerPromotion {
     Invoke-NativeProcess docker $arguments | Out-Null
 }
 
-Export-ModuleMember -Function Initialize-ContainerPromotion, Invoke-ContainerPromotion
+Export-ModuleMember -Function Initialize-ImagePromotion, Invoke-ImagePromotion

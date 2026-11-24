@@ -74,10 +74,10 @@ void test('accepts valid inputs for each documented consumer action', async () =
         'login-server': '${{ vars.ACR_LOGIN_SERVER }}',
       },
     ],
-    ['container-build-push', { tag: 'build-abcdef', version: '0.0.1' }],
-    ['container-image-inspect', { tag: 'build-abcdef' }],
+    ['image-build-push', { tag: 'build-abcdef', version: '0.0.1' }],
+    ['image-inspect', { tag: 'build-abcdef' }],
     [
-      'container-promote',
+      'image-promote',
       {
         'source-digest': 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         tag: 'v1.2.3',
@@ -255,10 +255,10 @@ void test('rejects a missing required bump-version increment', async () => {
   );
 });
 
-void test('rejects missing required container promotion credentials', async () => {
+void test('rejects missing required image promotion credentials', async () => {
   assert.equal(
     await validateWorkflow(
-      workflowFor('SayakMukhopadhyay/github-actions/container-promote@v1', {
+      workflowFor('SayakMukhopadhyay/github-actions/image-promote@v1', {
         'source-digest': 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         tag: 'v1.2.3',
       }),
@@ -267,10 +267,10 @@ void test('rejects missing required container promotion credentials', async () =
   );
 });
 
-void test('enforces distinct container build tag and version inputs without inspection aliases', async () => {
+void test('enforces distinct image build tag and version inputs without inspection aliases', async () => {
   assert.equal(
     await validateWorkflow(
-      workflowFor('SayakMukhopadhyay/github-actions/container-build-push@v1', {
+      workflowFor('SayakMukhopadhyay/github-actions/image-build-push@v1', {
         version: '0.0.1',
       }),
     ),
@@ -278,7 +278,7 @@ void test('enforces distinct container build tag and version inputs without insp
   );
   assert.equal(
     await validateWorkflow(
-      workflowFor('SayakMukhopadhyay/github-actions/container-build-push@v1', {
+      workflowFor('SayakMukhopadhyay/github-actions/image-build-push@v1', {
         tag: 'build-abcdef',
       }),
     ),
@@ -286,7 +286,7 @@ void test('enforces distinct container build tag and version inputs without insp
   );
   assert.equal(
     await validateWorkflow(
-      workflowFor('SayakMukhopadhyay/github-actions/container-image-inspect@v1', {
+      workflowFor('SayakMukhopadhyay/github-actions/image-inspect@v1', {
         version: 'build-abcdef',
       }),
     ),

@@ -1,16 +1,16 @@
 #requires -Version 7.4
 
 BeforeAll {
-    Import-Module (Join-Path $PSScriptRoot '..' 'container-build-push' 'ContainerBuild.psm1') -Force
-    Import-Module (Join-Path $PSScriptRoot '..' 'container-build-push' 'ContainerMetadata.psm1') -Force
-    Import-Module (Join-Path $PSScriptRoot '..' 'container-build-push' 'ContainerInspectionImage.psm1') -Force
-    Import-Module (Join-Path $PSScriptRoot '..' 'container-build-push' 'ContainerPublicationVerification.psm1') -Force
-    Import-Module (Join-Path $PSScriptRoot '..' 'container-image-inspect' 'ContainerImageInspect.psm1') -Force
-    Import-Module (Join-Path $PSScriptRoot '..' 'container-promote' 'ContainerPromotion.psm1') -Force
-    Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ContainerImage.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot '..' 'image-build-push' 'ImageBuild.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot '..' 'image-build-push' 'ImageMetadata.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot '..' 'image-build-push' 'ImageInspection.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot '..' 'image-build-push' 'ImagePublicationVerification.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot '..' 'image-inspect' 'ImageInspect.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot '..' 'image-promote' 'ImagePromotion.psm1') -Force
+    Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ImageReference.psm1') -Force
 }
 
-Describe 'Container action preparation' {
+Describe 'Image action preparation' {
     BeforeEach {
         $environmentVariables = @(
             'INPUT_TAG'
@@ -46,7 +46,7 @@ Describe 'Container action preparation' {
         $env:SOURCE_URL = 'https://github.com/Owner/Repository'
         $env:GITHUB_RUN_ID = '1234'
         $env:GITHUB_RUN_ATTEMPT = '2'
-        $env:GITHUB_ACTION = 'container-build-push'
+        $env:GITHUB_ACTION = 'image-build-push'
     }
 
     It 'keeps the build tag separate from the packaged application version' {
@@ -55,12 +55,12 @@ Describe 'Container action preparation' {
         $env:INPUT_COMPONENT = 'API'
         $env:INPUT_REGISTRY = 'GHCR.IO'
 
-        Initialize-ContainerBuild
+        Initialize-ImageBuild
 
         (Get-Content -Raw $env:GITHUB_OUTPUT) |
             Should -Match 'image-reference=ghcr.io/owner/repository/api:build-0123456789abcdef0123456789abcdef01234567'
         (Get-Content -Raw $env:GITHUB_OUTPUT) |
-            Should -Match 'inspection-reference=container-build-push-inspection:[0-9a-f]{24}'
+            Should -Match 'inspection-reference=image-build-push-inspection:[0-9a-f]{24}'
         (Get-Content -Raw $env:GITHUB_OUTPUT) |
             Should -Match 'org.opencontainers.image.revision=0123456789abcdef0123456789abcdef01234567'
         (Get-Content -Raw $env:GITHUB_OUTPUT) |
@@ -74,10 +74,10 @@ Describe 'Container action preparation' {
         $env:INPUT_VERSION = '0.0.1'
         $env:INPUT_PUSH = 'false'
 
-        Initialize-ContainerBuild
+        Initialize-ImageBuild
         $first = Get-Content -Raw $env:GITHUB_OUTPUT
         Remove-Item -LiteralPath $env:GITHUB_OUTPUT
-        Initialize-ContainerBuild
+        Initialize-ImageBuild
         $second = Get-Content -Raw $env:GITHUB_OUTPUT
 
         ($first | Select-String -Pattern 'inspection-reference=([^\r\n]+)').Matches.Groups[1].Value |
@@ -116,16 +116,16 @@ Describe 'Container action preparation' {
     }
 
     It 'reads the completed local image configuration without parsing the Dockerfile' {
-        $env:INSPECTION_REFERENCE = 'container-build-push-inspection:abcdef'
-        Mock Invoke-NativeProcess -ModuleName ContainerInspectionImage {
+        $env:INSPECTION_REFERENCE = 'image-build-push-inspection:abcdef'
+        Mock Invoke-NativeProcess -ModuleName ImageInspection {
             '{"Id":"sha256:abc","Os":"linux","Architecture":"amd64","Config":{"Labels":{"org.opencontainers.image.created":"2026-09-14T00:00:00Z","org.opencontainers.image.title":"Fixture=API","inherited.example/value":"kept"}}}'
         }
 
         Read-LocalImageMetadata
 
-        Should -Invoke Invoke-NativeProcess -ModuleName ContainerInspectionImage -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName ImageInspection -Times 1 -ParameterFilter {
             $FilePath -eq 'docker' -and
-            ($ArgumentList -join ' ') -eq 'image inspect --format {{json .}} container-build-push-inspection:abcdef'
+            ($ArgumentList -join ' ') -eq 'image inspect --format {{json .}} image-build-push-inspection:abcdef'
         }
         $output = Get-Content -Raw $env:GITHUB_OUTPUT
         $output | Should -Match 'org.opencontainers.image.created=2026-09-14T00:00:00Z'
@@ -134,12 +134,12 @@ Describe 'Container action preparation' {
     }
 
     It 'rejects malformed or ambiguous local Docker inspection results' {
-        $env:INSPECTION_REFERENCE = 'container-build-push-inspection:abcdef'
-        Mock Invoke-NativeProcess -ModuleName ContainerInspectionImage { '[]' }
+        $env:INSPECTION_REFERENCE = 'image-build-push-inspection:abcdef'
+        Mock Invoke-NativeProcess -ModuleName ImageInspection { '[]' }
 
         { Read-LocalImageMetadata } | Should -Throw '*must be one JSON object*'
 
-        Mock Invoke-NativeProcess -ModuleName ContainerInspectionImage {
+        Mock Invoke-NativeProcess -ModuleName ImageInspection {
             '{"Os":"linux","Architecture":"amd64","Config":{"Labels":{"org.opencontainers.image.title":42}}}'
         }
         { Read-LocalImageMetadata } | Should -Throw '*names and values must be strings*'
@@ -156,7 +156,7 @@ Describe 'Container action preparation' {
         $env:IMAGE_REFERENCE = 'ghcr.io/owner/repository:1.2.3'
         $digest = 'sha256:' + ('a' * 64)
         $attestationDigest = 'sha256:' + ('b' * 64)
-        Mock Invoke-NativeProcess -ModuleName ContainerPublicationVerification {
+        Mock Invoke-NativeProcess -ModuleName ImagePublicationVerification {
             $command = $ArgumentList -join ' '
             if ($command -eq "buildx imagetools inspect --raw $env:IMAGE_REFERENCE") {
                 return (@{
@@ -216,7 +216,7 @@ Describe 'Container action preparation' {
         }
 
         { Confirm-PublishedImageMetadata } | Should -Not -Throw
-        Should -Invoke Invoke-NativeProcess -ModuleName ContainerPublicationVerification -Times 4
+        Should -Invoke Invoke-NativeProcess -ModuleName ImagePublicationVerification -Times 4
     }
 
     It 'fails closed on a second runnable manifest' {
@@ -224,7 +224,7 @@ Describe 'Container action preparation' {
         $env:LABEL_SNAPSHOT = ConvertTo-LabelSnapshot $labels linux amd64
         $env:IMAGE_REFERENCE = 'ghcr.io/owner/repository:1.2.3'
         $digest = 'sha256:' + ('a' * 64)
-        Mock Invoke-NativeProcess -ModuleName ContainerPublicationVerification {
+        Mock Invoke-NativeProcess -ModuleName ImagePublicationVerification {
             (@{
                 mediaType   = 'application/vnd.oci.image.index.v1+json'
                 annotations = @{ 'org.opencontainers.image.title' = 'Fixture' }
@@ -244,7 +244,7 @@ Describe 'Container action preparation' {
         $env:IMAGE_REFERENCE = 'ghcr.io/owner/repository:1.2.3'
         $digest = 'sha256:' + ('a' * 64)
         $attestationDigest = 'sha256:' + ('b' * 64)
-        Mock Invoke-NativeProcess -ModuleName ContainerPublicationVerification {
+        Mock Invoke-NativeProcess -ModuleName ImagePublicationVerification {
             $command = $ArgumentList -join ' '
             if ($command -eq "buildx imagetools inspect --raw $env:IMAGE_REFERENCE") {
                 return (@{
@@ -293,15 +293,15 @@ Describe 'Container action preparation' {
     }
 
     It 'removes only the exact local inspection tag and tolerates an absent partial build result' {
-        $env:INSPECTION_REFERENCE = 'container-build-push-inspection:abcdef'
-        Mock Invoke-NativeProcess -ModuleName ContainerInspectionImage {
+        $env:INSPECTION_REFERENCE = 'image-build-push-inspection:abcdef'
+        Mock Invoke-NativeProcess -ModuleName ImageInspection {
             [pscustomobject]@{ ExitCode = 1; StandardOutput = ''; StandardError = 'No such image' }
         }
 
         { Remove-LocalInspectionImage } | Should -Not -Throw
-        Should -Invoke Invoke-NativeProcess -ModuleName ContainerInspectionImage -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName ImageInspection -Times 1 -ParameterFilter {
             $FilePath -eq 'docker' -and
-            ($ArgumentList -join ' ') -eq 'image rm --force container-build-push-inspection:abcdef' -and
+            ($ArgumentList -join ' ') -eq 'image rm --force image-build-push-inspection:abcdef' -and
             $AllowFailure
         }
     }
@@ -311,15 +311,15 @@ Describe 'Container action preparation' {
         $env:INPUT_VERSION = '1.2.3'
         $env:INPUT_PUSH = 'true'
 
-        { Initialize-ContainerBuild } | Should -Throw '*both required*'
+        { Initialize-ImageBuild } | Should -Throw '*both required*'
 
         $env:INPUT_USERNAME = 'user'
         $env:INPUT_PASSWORD = 'token'
-        { Initialize-ContainerBuild } | Should -Not -Throw
+        { Initialize-ImageBuild } | Should -Not -Throw
 
         $env:INPUT_PUSH = 'false'
         $env:INPUT_PASSWORD = $null
-        { Initialize-ContainerBuild } | Should -Throw '*provided together*'
+        { Initialize-ImageBuild } | Should -Throw '*provided together*'
     }
 
     It 'rejects metacharacters and control characters in image coordinates' {
@@ -327,10 +327,10 @@ Describe 'Container action preparation' {
         $env:INPUT_VERSION = '1.0.0'
         $env:INPUT_IMAGE_REPOSITORY = 'owner/repo;echo'
 
-        { Initialize-ContainerBuild } | Should -Throw
+        { Initialize-ImageBuild } | Should -Throw
 
         $env:INPUT_IMAGE_REPOSITORY = "owner/repo`nnext"
-        { Initialize-ContainerBuild } | Should -Throw
+        { Initialize-ImageBuild } | Should -Throw
     }
 
     It 'constructs the same normalized reference for read-only inspection' {
@@ -338,7 +338,7 @@ Describe 'Container action preparation' {
         $env:INPUT_COMPONENT = 'API'
         $env:INPUT_REGISTRY = 'GHCR.IO'
 
-        Initialize-ContainerImageInspection
+        Initialize-ImageInspection
 
         (Get-Content -Raw $env:GITHUB_OUTPUT) |
             Should -Match 'image-reference=ghcr.io/owner/repository/api:BUILD-ABCDEF'
@@ -348,25 +348,25 @@ Describe 'Container action preparation' {
         $env:INPUT_TAG = 'build-abcdef'
         $env:INPUT_USERNAME = 'user'
 
-        { Initialize-ContainerImageInspection } | Should -Throw '*provided together*'
+        { Initialize-ImageInspection } | Should -Throw '*provided together*'
 
         $env:INPUT_PASSWORD = 'token'
-        { Initialize-ContainerImageInspection } | Should -Not -Throw
+        { Initialize-ImageInspection } | Should -Not -Throw
     }
 
     It 'returns the existing manifest digest for an exact image reference' {
         $digest = 'sha256:' + ('a' * 64)
         $env:IMAGE_REFERENCE = 'ghcr.io/owner/repository:1.2.3'
-        Mock Invoke-OciArtifactProbe -ModuleName ContainerImage {
+        Mock Invoke-OciArtifactProbe -ModuleName ImageReference {
             [pscustomobject]@{
                 Exists         = $true
                 StandardOutput = "{`"digest`":`"$digest`"}"
             }
         }
 
-        Write-ContainerImageState
+        Write-ImageState
 
-        Should -Invoke Invoke-OciArtifactProbe -ModuleName ContainerImage -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-OciArtifactProbe -ModuleName ImageReference -Times 1 -ParameterFilter {
             $FilePath -eq 'docker' -and
             ($ArgumentList -join ' ') -eq (
                 'buildx imagetools inspect --format {{json .Manifest}} ' + $env:IMAGE_REFERENCE
@@ -379,11 +379,11 @@ Describe 'Container action preparation' {
 
     It 'reports an exact image reference as absent without a digest' {
         $env:IMAGE_REFERENCE = 'ghcr.io/owner/repository:1.2.3'
-        Mock Invoke-OciArtifactProbe -ModuleName ContainerImage {
+        Mock Invoke-OciArtifactProbe -ModuleName ImageReference {
             [pscustomobject]@{ Exists = $false; StandardOutput = '' }
         }
 
-        Write-ContainerImageState
+        Write-ImageState
 
         $output = Get-Content -Raw $env:GITHUB_OUTPUT
         $output | Should -Match 'exists=false'
@@ -392,11 +392,11 @@ Describe 'Container action preparation' {
 
     It 'rejects malformed manifest output from a successful image probe' {
         $env:IMAGE_REFERENCE = 'ghcr.io/owner/repository:1.2.3'
-        Mock Invoke-OciArtifactProbe -ModuleName ContainerImage {
+        Mock Invoke-OciArtifactProbe -ModuleName ImageReference {
             [pscustomobject]@{ Exists = $true; StandardOutput = '{"digest":"invalid"}' }
         }
 
-        { Write-ContainerImageState } | Should -Throw '*valid manifest digest*'
+        { Write-ImageState } | Should -Throw '*valid manifest digest*'
     }
 
     It 'constructs digest and tag references for promotion' {
@@ -406,7 +406,7 @@ Describe 'Container action preparation' {
         $env:INPUT_USERNAME = 'user'
         $env:INPUT_PASSWORD = 'token'
 
-        Initialize-ContainerPromotion
+        Initialize-ImagePromotion
 
         $output = Get-Content -Raw $env:GITHUB_OUTPUT
         $output | Should -Match 'source-reference=ghcr.io/owner/repository/web@sha256:'
@@ -419,14 +419,14 @@ Describe 'Container action preparation' {
         $env:INPUT_USERNAME = 'user'
         $env:INPUT_PASSWORD = 'token'
 
-        { Initialize-ContainerPromotion } | Should -Throw
+        { Initialize-ImagePromotion } | Should -Throw
     }
 
     It 'requires promotion credentials before constructing references' {
         $env:INPUT_SOURCE_DIGEST = 'sha256:' + ('a' * 64)
         $env:INPUT_TAG = '1.2.3'
 
-        { Initialize-ContainerPromotion } | Should -Throw '*both required*'
+        { Initialize-ImagePromotion } | Should -Throw '*both required*'
     }
 
     It 'normalizes identical image coordinates across build, inspection, and promotion' {
@@ -437,17 +437,17 @@ Describe 'Container action preparation' {
         $env:INPUT_REGISTRY = 'REGISTRY.Example.COM:5000'
         $env:INPUT_IMAGE_REPOSITORY = 'Owner/Product'
 
-        Initialize-ContainerBuild
+        Initialize-ImageBuild
         $buildReference = (Get-Content $env:GITHUB_OUTPUT | Where-Object { $_ -like 'image-reference=*' }) -replace '^image-reference=', ''
 
         Remove-Item -LiteralPath $env:GITHUB_OUTPUT
-        Initialize-ContainerImageInspection
+        Initialize-ImageInspection
         $inspectionReference = (Get-Content $env:GITHUB_OUTPUT | Where-Object { $_ -like 'image-reference=*' }) -replace '^image-reference=', ''
 
         Remove-Item -LiteralPath $env:GITHUB_OUTPUT
         $env:INPUT_USERNAME = 'user'
         $env:INPUT_PASSWORD = 'token'
-        Initialize-ContainerPromotion
+        Initialize-ImagePromotion
         $promotionReference = (Get-Content $env:GITHUB_OUTPUT | Where-Object { $_ -like 'target-reference=*' }) -replace '^target-reference=', ''
 
         $buildReference | Should -Be 'registry.example.com:5000/owner/product/api:BUILD-AbCd'
@@ -458,11 +458,11 @@ Describe 'Container action preparation' {
     It 'uses exactly one direct imagetools source for an index-preserving promotion and propagates failures' {
         $env:SOURCE_REFERENCE = 'ghcr.io/owner/repo@sha256:' + ('a' * 64)
         $env:TARGET_REFERENCE = 'ghcr.io/owner/repo:1.0.0'
-        Mock Invoke-NativeProcess -ModuleName ContainerPromotion {}
+        Mock Invoke-NativeProcess -ModuleName ImagePromotion {}
 
-        Invoke-ContainerPromotion
+        Invoke-ImagePromotion
 
-        Should -Invoke Invoke-NativeProcess -ModuleName ContainerPromotion -Times 1 -ParameterFilter {
+        Should -Invoke Invoke-NativeProcess -ModuleName ImagePromotion -Times 1 -ParameterFilter {
             $command = $ArgumentList -join ' '
             $expectedCommand = (
                 'buildx imagetools create --prefer-index=false ' +
@@ -472,19 +472,19 @@ Describe 'Container action preparation' {
             $FilePath -eq 'docker' -and $command -eq $expectedCommand
         }
 
-        Mock Invoke-NativeProcess -ModuleName ContainerPromotion { throw 'docker failed' }
+        Mock Invoke-NativeProcess -ModuleName ImagePromotion { throw 'docker failed' }
 
-        { Invoke-ContainerPromotion } | Should -Throw '*docker failed*'
+        { Invoke-ImagePromotion } | Should -Throw '*docker failed*'
     }
 }
 
-Describe 'Container action entrypoints' {
+Describe 'Image action entrypoints' {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1') -Force
     }
 
     It 'preserves the original probe failure in the GitHub annotation' {
-        $entrypoint = Join-Path $PSScriptRoot '..' 'container-build-push' 'probe-image.ps1'
+        $entrypoint = Join-Path $PSScriptRoot '..' 'image-build-push' 'probe-image.ps1'
         $result = Invoke-NativeProcess pwsh @('-NoProfile', '-File', $entrypoint) `
             -Environment @{
             IMAGE_REFERENCE = ''

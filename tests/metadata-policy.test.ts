@@ -130,8 +130,8 @@ void test('consumer action metadata is complete and uses safe runtime boundaries
   }
 });
 
-void test('container build metadata derives publication annotations from an identical local build', () => {
-  const metadata = readAction('container-build-push');
+void test('image build metadata derives publication annotations from an identical local build', () => {
+  const metadata = readAction('image-build-push');
   const prepare = (metadata.runs?.steps ?? []).find((step) => step.id === 'prepare');
 
   for (const input of ['build-contexts', 'build-args', 'cache-from', 'cache-to']) {
@@ -246,8 +246,8 @@ void test('create-release requires and isolates an explicit latest policy', () =
   assert.equal('INPUT_MAKE_LATEST' in (generator?.env ?? {}), false);
 });
 
-void test('container image inspection metadata is exact-reference and read-only', () => {
-  const metadata = readAction('container-image-inspect');
+void test('image inspection metadata is exact-reference and read-only', () => {
+  const metadata = readAction('image-inspect');
 
   assert.deepEqual(Object.keys(metadata.inputs ?? {}).sort(), [
     'component',
@@ -306,8 +306,8 @@ void test('Helm package metadata keeps development source authority private', ()
   assert.equal(internalPreparation.inputs?.['source-revision']?.required, true);
 });
 
-void test('container promotion metadata performs one direct digest-to-tag operation', () => {
-  const metadata = readAction('container-promote');
+void test('image promotion metadata performs one direct digest-to-tag operation', () => {
+  const metadata = readAction('image-promote');
 
   assert.equal(metadata.inputs?.['source-digest']?.required, true);
   assert.equal(metadata.inputs?.tag?.required, true);
@@ -336,7 +336,7 @@ void test('container promotion metadata performs one direct digest-to-tag operat
   assert.match(String(command), /promote\.ps1/u);
 
   const promotionModule = readFileSync(
-    path.join(import.meta.dirname, '..', 'container-promote', 'ContainerPromotion.psm1'),
+    path.join(import.meta.dirname, '..', 'image-promote', 'ImagePromotion.psm1'),
     'utf8',
   );
 
@@ -345,7 +345,7 @@ void test('container promotion metadata performs one direct digest-to-tag operat
 });
 
 void test('registry credential policy is wired before every registry login', () => {
-  const build = readAction('container-build-push');
+  const build = readAction('image-build-push');
   const buildSteps = build.runs?.steps ?? [];
   const buildPrepare = buildSteps.find((step) => step.id === 'prepare');
   const buildLoginIndex = buildSteps.findIndex((step) => String(step.uses).startsWith('docker/login-action@'));
@@ -354,17 +354,17 @@ void test('registry credential policy is wired before every registry login', () 
   assert.equal(buildPrepare?.env?.INPUT_PASSWORD, '${{ inputs.password }}');
   assert.ok(buildSteps.indexOf(buildPrepare) < buildLoginIndex);
 
-  const inspection = readAction('container-image-inspect');
+  const inspection = readAction('image-inspect');
   const inspectionSteps = inspection.runs?.steps ?? [];
   assert.ok(
     inspectionSteps.findIndex((step) => step.id === 'prepare') <
       inspectionSteps.findIndex((step) => String(step.uses).startsWith('docker/login-action@')),
   );
 
-  const promotion = readAction('container-promote');
+  const promotion = readAction('image-promote');
   const promotionSteps = promotion.runs?.steps ?? [];
   const promotionPrepare = promotionSteps.find((step) => step.id === 'prepare');
-  const promotionModule = readFileSync(path.join(root, 'container-promote', 'ContainerPromotion.psm1'), 'utf8');
+  const promotionModule = readFileSync(path.join(root, 'image-promote', 'ImagePromotion.psm1'), 'utf8');
   assert.equal(promotionPrepare?.env?.INPUT_USERNAME, '${{ inputs.username }}');
   assert.equal(promotionPrepare?.env?.INPUT_PASSWORD, '${{ inputs.password }}');
   assert.ok(
@@ -390,27 +390,22 @@ void test('registry credential policy is wired before every registry login', () 
     assert.match(String(validation?.run), /validate-registry-credentials\.ps1/u);
   }
 
-  const buildModule = readFileSync(path.join(root, 'container-build-push', 'ContainerBuild.psm1'), 'utf8');
+  const buildModule = readFileSync(path.join(root, 'image-build-push', 'ImageBuild.psm1'), 'utf8');
   assert.match(buildModule, /INPUT_PUSH -eq 'true'.+?'Required'.+?'Optional'/su);
-  assert.ok(buildModule.indexOf('Assert-RegistryCredentials') < buildModule.indexOf('Resolve-ContainerImageReference'));
+  assert.ok(buildModule.indexOf('Assert-RegistryCredentials') < buildModule.indexOf('Resolve-ImageReference'));
 
-  const inspectionModule = readFileSync(
-    path.join(root, 'container-image-inspect', 'ContainerImageInspect.psm1'),
-    'utf8',
-  );
+  const inspectionModule = readFileSync(path.join(root, 'image-inspect', 'ImageInspect.psm1'), 'utf8');
   assert.match(inspectionModule, /Assert-RegistryCredentials[\s\S]+?-Requirement Optional/u);
 
   assert.match(promotionModule, /Assert-RegistryCredentials[\s\S]+?-Requirement Required/u);
-  assert.ok(
-    promotionModule.indexOf('Assert-RegistryCredentials') < promotionModule.indexOf('Resolve-ContainerImageName'),
-  );
-  assert.match(promotionModule, /New-ContainerDigestReference/u);
-  assert.match(promotionModule, /New-ContainerTagReference/u);
+  assert.ok(promotionModule.indexOf('Assert-RegistryCredentials') < promotionModule.indexOf('Resolve-ImageName'));
+  assert.match(promotionModule, /New-ImageDigestReference/u);
+  assert.match(promotionModule, /New-ImageTagReference/u);
   assert.doesNotMatch(promotionModule, /registryPattern|pathPattern/u);
 });
 
 void test('action families use shared coordinates, OCI probing, and GitOps transactions', () => {
-  for (const actionName of ['container-build-push', 'container-image-inspect', 'container-promote']) {
+  for (const actionName of ['image-build-push', 'image-inspect', 'image-promote']) {
     const metadata = readAction(actionName);
 
     assert.equal(metadata.inputs?.component?.default, '', `${actionName} component default`);
@@ -418,11 +413,11 @@ void test('action families use shared coordinates, OCI probing, and GitOps trans
     assert.equal(metadata.inputs?.['image-repository']?.default, '', `${actionName} repository default`);
   }
 
-  const containerImage = readFileSync(path.join(root, 'powershell', 'ContainerImage.psm1'), 'utf8');
-  assert.match(containerImage, /function Resolve-ContainerImageName/u);
-  assert.match(containerImage, /function New-ContainerTagReference/u);
-  assert.match(containerImage, /function New-ContainerDigestReference/u);
-  assert.match(containerImage, /Invoke-OciArtifactProbe docker/u);
+  const imageReference = readFileSync(path.join(root, 'powershell', 'ImageReference.psm1'), 'utf8');
+  assert.match(imageReference, /function Resolve-ImageName/u);
+  assert.match(imageReference, /function New-ImageTagReference/u);
+  assert.match(imageReference, /function New-ImageDigestReference/u);
+  assert.match(imageReference, /Invoke-OciArtifactProbe docker/u);
 
   const helmTransaction = readFileSync(path.join(root, 'helm-package-push', 'HelmTransaction.psm1'), 'utf8');
   assert.match(helmTransaction, /Import-Module.+OciArtifactProbe\.psm1/u);
@@ -442,7 +437,7 @@ void test('action families use shared coordinates, OCI probing, and GitOps trans
 
 void test('registry-aware action metadata uses consistent grouping and credential language', () => {
   const expectedInputOrder: Record<string, string[]> = {
-    'container-build-push': [
+    'image-build-push': [
       'tag',
       'version',
       'registry',
@@ -458,8 +453,8 @@ void test('registry-aware action metadata uses consistent grouping and credentia
       'cache-from',
       'cache-to',
     ],
-    'container-image-inspect': ['tag', 'registry', 'image-repository', 'component', 'username', 'password'],
-    'container-promote': ['source-digest', 'tag', 'registry', 'image-repository', 'component', 'username', 'password'],
+    'image-inspect': ['tag', 'registry', 'image-repository', 'component', 'username', 'password'],
+    'image-promote': ['source-digest', 'tag', 'registry', 'image-repository', 'component', 'username', 'password'],
     'helm-package-push': [
       'development',
       'app-version',
@@ -490,9 +485,9 @@ void test('registry-aware action metadata uses consistent grouping and credentia
     assert.deepEqual(Object.keys(readAction(actionName).inputs ?? {}), inputOrder, `${actionName} input grouping`);
   }
 
-  const build = readAction('container-build-push');
-  const inspect = readAction('container-image-inspect');
-  const promote = readAction('container-promote');
+  const build = readAction('image-build-push');
+  const inspect = readAction('image-inspect');
+  const promote = readAction('image-promote');
   const helm = readAction('helm-package-push');
   const chart = readAction('chart-update-deploy');
 
@@ -712,10 +707,10 @@ void test('release-tags fixes the target and keeps Git credentials ephemeral', (
   assert.doesNotMatch(transaction, /git tag/u);
 });
 
-void test('CI exercises one container tag and multiline build inputs through the consumer action', () => {
+void test('CI exercises one image tag and multiline build inputs through the consumer action', () => {
   const workflow = readYaml<WorkflowMetadata>(path.join(root, '.github', 'workflows', 'ci.yaml'));
   const steps = workflow.jobs?.['action-level']?.steps ?? [];
-  const fixtures = steps.filter((step) => step.uses === '$/container-build-push');
+  const fixtures = steps.filter((step) => step.uses === '$/image-build-push');
 
   assert.equal(fixtures.length, 1);
   assert.equal(

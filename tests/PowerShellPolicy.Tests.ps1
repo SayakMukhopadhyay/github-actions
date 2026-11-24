@@ -43,8 +43,9 @@ Describe 'PowerShell migration policy' {
     It 'standardizes every action-invoked PowerShell entrypoint' {
         $root = Join-Path $PSScriptRoot '..'
         $entrypoints = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-        $actionFiles = @(& git -C $root ls-files '*/action.yaml' '*/*/action.yaml') |
-            ForEach-Object { Get-Item (Join-Path $root $_) }
+        $actionFiles = @(& git -C $root ls-files '*/action.yaml' '*/*/action.yaml' |
+                Where-Object { Test-Path (Join-Path $root $_) }) |
+                ForEach-Object { Get-Item (Join-Path $root $_) }
 
         foreach ($actionFile in $actionFiles) {
             $source = Get-Content -Raw $actionFile.FullName
@@ -109,22 +110,22 @@ Describe 'PowerShell migration policy' {
         }
     }
 
-    It 'keeps container-build-push responsibilities in focused action-local modules' {
+    It 'keeps image-build-push responsibilities in focused action-local modules' {
         $root = Join-Path $PSScriptRoot '..'
         $moduleByEntrypoint = [ordered]@{
-            'prepare-build.ps1' = 'ContainerBuild.psm1'
-            'inspect-image.ps1' = 'ContainerInspectionImage.psm1'
-            'verify-image.ps1'  = 'ContainerPublicationVerification.psm1'
-            'cleanup-image.ps1' = 'ContainerInspectionImage.psm1'
+            'prepare-build.ps1' = 'ImageBuild.psm1'
+            'inspect-image.ps1' = 'ImageInspection.psm1'
+            'verify-image.ps1'  = 'ImagePublicationVerification.psm1'
+            'cleanup-image.ps1' = 'ImageInspection.psm1'
         }
 
         foreach ($entry in $moduleByEntrypoint.GetEnumerator()) {
-            $source = Get-Content -Raw (Join-Path $root "container-build-push/$($entry.Key)")
+            $source = Get-Content -Raw (Join-Path $root "image-build-push/$($entry.Key)")
 
             $source | Should -Match ([regex]::Escape($entry.Value))
         }
 
-        $buildModule = Get-Content -Raw (Join-Path $root 'container-build-push/ContainerBuild.psm1')
+        $buildModule = Get-Content -Raw (Join-Path $root 'image-build-push/ImageBuild.psm1')
         $buildModule | Should -Not -Match 'Read-LocalImageMetadata|Confirm-PublishedImageMetadata|Remove-LocalInspectionImage'
     }
 }

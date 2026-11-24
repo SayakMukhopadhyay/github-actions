@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'ActionRuntime.psm1')
 Import-Module (Join-Path $PSScriptRoot 'OciArtifactProbe.psm1')
 
-function Resolve-ContainerImageName {
+function Resolve-ImageName {
     [CmdletBinding()]
     param(
         [AllowEmptyString()] [string] $Component,
@@ -28,7 +28,7 @@ function Resolve-ContainerImageName {
 
     foreach ($value in $component, $registry, $repository) {
         if ($value -match '[\x00-\x1f\x7f]') {
-            throw 'Container image inputs must not contain control characters'
+            throw 'Image inputs must not contain control characters'
         }
     }
 
@@ -55,7 +55,7 @@ function Resolve-ContainerImageName {
     $imageName
 }
 
-function New-ContainerTagReference {
+function New-ImageTagReference {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [string] $ImageName,
@@ -64,12 +64,12 @@ function New-ContainerTagReference {
 
     $tag = Assert-SingleLine $Tag tag
     if ($tag -notmatch '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$') {
-        throw 'Invalid container tag'
+        throw 'Invalid image tag'
     }
     '{0}:{1}' -f $ImageName, $tag
 }
 
-function New-ContainerDigestReference {
+function New-ImageDigestReference {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [string] $ImageName,
@@ -78,12 +78,12 @@ function New-ContainerDigestReference {
 
     $digest = Assert-SingleLine $Digest digest
     if ($digest -notmatch '^sha256:[0-9a-f]{64}$') {
-        throw 'Invalid container image digest'
+        throw 'Invalid image digest'
     }
     '{0}@{1}' -f $ImageName, $digest
 }
 
-function Resolve-ContainerImageReference {
+function Resolve-ImageReference {
     [CmdletBinding()]
     param(
         [AllowEmptyString()] [string] $Tag,
@@ -99,11 +99,11 @@ function Resolve-ContainerImageReference {
         ImageRepository  = $ImageRepository
         SourceRepository = $SourceRepository
     }
-    $imageName = Resolve-ContainerImageName @coordinates
-    New-ContainerTagReference -ImageName $imageName -Tag $Tag
+    $imageName = Resolve-ImageName @coordinates
+    New-ImageTagReference -ImageName $imageName -Tag $Tag
 }
 
-function Write-ContainerImageState {
+function Write-ImageState {
     $imageReference = Assert-SingleLine $env:IMAGE_REFERENCE 'image-reference'
     $probe = Invoke-OciArtifactProbe docker @(
         'buildx'
@@ -134,9 +134,9 @@ function Write-ContainerImageState {
 }
 
 Export-ModuleMember -Function @(
-    'Resolve-ContainerImageName'
-    'New-ContainerTagReference'
-    'New-ContainerDigestReference'
-    'Resolve-ContainerImageReference'
-    'Write-ContainerImageState'
+    'Resolve-ImageName'
+    'New-ImageTagReference'
+    'New-ImageDigestReference'
+    'Resolve-ImageReference'
+    'Write-ImageState'
 )

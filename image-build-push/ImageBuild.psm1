@@ -3,10 +3,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1')
-Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ContainerImage.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ImageReference.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'RegistryCredentials.psm1') -Force
 
-function Initialize-ContainerBuild {
+function Initialize-ImageBuild {
     $credentialRequirement = if ($env:INPUT_PUSH -eq 'true') {
         'Required'
     } else {
@@ -17,7 +17,7 @@ function Initialize-ContainerBuild {
         -RegistrySecret $env:INPUT_PASSWORD `
         -Requirement $credentialRequirement
 
-    $imageReference = Resolve-ContainerImageReference `
+    $imageReference = Resolve-ImageReference `
         -Tag $env:INPUT_TAG `
         -Component $env:INPUT_COMPONENT `
         -Registry $env:INPUT_REGISTRY `
@@ -42,8 +42,8 @@ function Initialize-ContainerBuild {
     ).ToLowerInvariant().Substring(0, 24)
 
     Write-GitHubOutput 'image-reference' $imageReference
-    Write-GitHubOutput 'inspection-reference' "container-build-push-inspection:$temporaryHash"
+    Write-GitHubOutput 'inspection-reference' "image-build-push-inspection:$temporaryHash"
     Write-GitHubOutput 'labels' $labels
 }
 
-Export-ModuleMember -Function 'Initialize-ContainerBuild'
+Export-ModuleMember -Function 'Initialize-ImageBuild'

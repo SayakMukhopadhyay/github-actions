@@ -104,8 +104,8 @@ jobs:
           working-directory: tests/fixtures/go-chart
           helm: 'true'
 
-      - name: Build fixture container
-        uses: $/container-build-push
+      - name: Build fixture image
+        uses: $/image-build-push
         with:
           tag: build-ci
           version: 0.0.1

@@ -1,5 +1,5 @@
-name: Container Build Push
-description: Build a container and optionally push it to a caller-selected registry
+name: Image Build Push
+description: Build an image and optionally push it to a caller-selected container registry
 inputs:
   tag:
     description: Container image tag to build

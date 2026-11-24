@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot '..' 'powershell' 'ActionRuntime.psm1')
-Import-Module (Join-Path $PSScriptRoot 'ContainerMetadata.psm1')
+Import-Module (Join-Path $PSScriptRoot 'ImageMetadata.psm1')
 
 function Read-LocalImageMetadata {
     $reference = Assert-SingleLine -Value $env:INSPECTION_REFERENCE -Name 'inspection-reference'
