@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@actions/core": "3.0.1",
-    "openai": "7.51.0",
+    "openai": "7.60.0",
     "yaml": "2.9.1"
   },
   "devDependencies": {
